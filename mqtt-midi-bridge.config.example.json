@@ -1,0 +1,9 @@
+{
+  "url": "mqtt://localhost:1883",
+  "prefix": "remote",
+  "virtual": "mqtt-midi-bridge",
+  "mqttOptions": {
+    "username": "",
+    "password": ""
+  }
+}
