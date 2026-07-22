@@ -22,8 +22,6 @@ function App() {
   const platform = getPlatform();
   const { inputs, outputs } = useMidiPortNames();
 
-  const darkMode = useAppStore((s) => s.darkMode);
-  const setDarkMode = useAppStore((s) => s.setDarkMode);
   const url = useAppStore((s) => s.url);
   const prefix = useAppStore((s) => s.prefix);
   const virtualPort = useAppStore((s) => s.virtualPort);
@@ -83,21 +81,15 @@ function App() {
     <Box sx={{ minHeight: "100vh", py: 4 }}>
       <Container maxWidth="md">
         <Stack spacing={3}>
-          <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center" }}>
-            <Box>
-              <Typography variant="h4">Midge</Typography>
-              <Typography variant="body2" color="text.secondary">
-                MQTT↔MIDI bridge ({platform}) — compatible with{" "}
-                <Typography component="span" variant="body2" color="text.secondary">
-                  @grantler-instruments/mqtt-midi
-                </Typography>
+          <Box>
+            <Typography variant="h4">Midge</Typography>
+            <Typography variant="body2" color="text.secondary">
+              MQTT↔MIDI bridge ({platform}) — compatible with{" "}
+              <Typography component="span" variant="body2" color="text.secondary">
+                @grantler-instruments/mqtt-midi
               </Typography>
-            </Box>
-            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-              <Typography variant="body2">Dark mode</Typography>
-              <Switch checked={darkMode} onChange={(_, checked) => setDarkMode(checked)} />
-            </Stack>
-          </Stack>
+            </Typography>
+          </Box>
 
           {statusMessage && (
             <Paper sx={{ p: 2 }}>
@@ -202,7 +194,7 @@ function App() {
                   value={virtualPort}
                   onChange={(e) => setVirtualPort(e.target.value)}
                   fullWidth
-                  helperText="Default on macOS/Linux. Point your DAW at this port."
+                  helperText="Creates two virtual endpoints with this name: Live MIDI In (from MQTT) and Live MIDI Out (to MQTT)."
                 />
               )}
               <Stack direction="row" spacing={1}>
