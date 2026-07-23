@@ -2,9 +2,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Mutex;
 use std::thread::{self, JoinHandle};
 
-use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 #[cfg(unix)]
 use midir::os::unix::{VirtualInput, VirtualOutput};
+use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, QoS, Transport};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
@@ -15,9 +15,9 @@ use crate::devices::{find_input_port_index, find_output_port_index, PortLists};
 use crate::mqtt_midi::{
     build_control_change_topic, build_note_off_topic, build_note_on_topic, build_pitch_bend_topic,
     build_program_change_topic, build_sysex_topic, build_system_topic, decode_pitch_bend,
-    decode_seven_bit, decode_sysex_json, encode_empty_payload, encode_pitch_bend,
-    encode_seven_bit, encode_sysex_json, in_subscription_topics, parse_midi_message, parse_topic,
-    to_midi_bytes, Direction, ParsedMidiMessage, ParsedTopic,
+    decode_seven_bit, decode_sysex_json, encode_empty_payload, encode_pitch_bend, encode_seven_bit,
+    encode_sysex_json, in_subscription_topics, parse_midi_message, parse_topic, to_midi_bytes,
+    Direction, ParsedMidiMessage, ParsedTopic,
 };
 
 pub const DEFAULT_VIRTUAL_PORT_NAME: &str = "midge";
@@ -75,7 +75,7 @@ struct BridgeHandle {
     config: ResolvedBridgeConfig,
 }
 
-pub struct BridgeState(pub Mutex<Option<BridgeHandle>>);
+pub struct BridgeState(Mutex<Option<BridgeHandle>>);
 
 impl Default for BridgeState {
     fn default() -> Self {
@@ -150,8 +150,11 @@ pub async fn start_bridge(
         }
     });
 
-    let mut mqtt_options =
-        MqttOptions::new(resolved.client_id.clone(), resolved.host.clone(), resolved.port);
+    let mut mqtt_options = MqttOptions::new(
+        resolved.client_id.clone(),
+        resolved.host.clone(),
+        resolved.port,
+    );
     mqtt_options.set_keep_alive(std::time::Duration::from_secs(30));
     if resolved.use_tls {
         mqtt_options.set_transport(Transport::tls_with_default_config());
@@ -190,11 +193,7 @@ pub async fn start_bridge(
             direction: "status".to_string(),
             detail: format!(
                 "Bridge started ({}{})",
-                if resolved.use_virtual {
-                    "virtual "
-                } else {
-                    ""
-                },
+                if resolved.use_virtual { "virtual " } else { "" },
                 midi_in_label
             ),
         },
@@ -367,7 +366,7 @@ fn open_midi_input(
     if config.use_virtual {
         #[cfg(unix)]
         {
-            let mut midi_in = MidiInput::new("midge-bridge-in").map_err(|e| e.to_string())?;
+            let midi_in = MidiInput::new("midge-bridge-in").map_err(|e| e.to_string())?;
             return midi_in
                 .create_virtual(
                     &config.midi_in,
@@ -409,10 +408,7 @@ fn connect_midi_input(
         .map_err(|e| e.to_string())
 }
 
-fn spawn_midi_out_thread(
-    mut conn: MidiOutputConnection,
-    rx: Receiver<Vec<u8>>,
-) -> JoinHandle<()> {
+fn spawn_midi_out_thread(mut conn: MidiOutputConnection, rx: Receiver<Vec<u8>>) -> JoinHandle<()> {
     thread::spawn(move || {
         while let Ok(message) = rx.recv() {
             let _ = conn.send(&message);
@@ -465,19 +461,25 @@ async fn run_mqtt_loop(
                 .publish(topic.clone(), QoS::AtMostOnce, false, payload)
                 .await
             {
-                let _ = app.emit("bridge://log", BridgeLogEntry {
-                    direction: "error".to_string(),
-                    detail: format!("MQTT publish failed: {err}"),
-                });
+                let _ = app.emit(
+                    "bridge://log",
+                    BridgeLogEntry {
+                        direction: "error".to_string(),
+                        detail: format!("MQTT publish failed: {err}"),
+                    },
+                );
             }
         }
     }
 
     let _ = client.disconnect().await;
-    let _ = app.emit("bridge://log", BridgeLogEntry {
-        direction: "status".to_string(),
-        detail: "Bridge stopped".to_string(),
-    });
+    let _ = app.emit(
+        "bridge://log",
+        BridgeLogEntry {
+            direction: "status".to_string(),
+            detail: "Bridge stopped".to_string(),
+        },
+    );
 }
 
 fn handle_mqtt_publish(
@@ -488,14 +490,30 @@ fn handle_mqtt_publish(
     midi_out_tx: &Sender<Vec<u8>>,
 ) -> Result<(), String> {
     let parsed = parse_topic(prefix, topic).ok_or_else(|| format!("ignored topic: {topic}"))?;
-    if !matches!(parsed, ParsedTopic::NoteOn { direction: Direction::In, .. }
-        | ParsedTopic::NoteOff { direction: Direction::In, .. }
-        | ParsedTopic::ControlChange { direction: Direction::In, .. }
-        | ParsedTopic::ProgramChange { direction: Direction::In, .. }
-        | ParsedTopic::PitchBend { direction: Direction::In, .. }
-        | ParsedTopic::Sysex { direction: Direction::In }
-        | ParsedTopic::System { direction: Direction::In, .. })
-    {
+    if !matches!(
+        parsed,
+        ParsedTopic::NoteOn {
+            direction: Direction::In,
+            ..
+        } | ParsedTopic::NoteOff {
+            direction: Direction::In,
+            ..
+        } | ParsedTopic::ControlChange {
+            direction: Direction::In,
+            ..
+        } | ParsedTopic::ProgramChange {
+            direction: Direction::In,
+            ..
+        } | ParsedTopic::PitchBend {
+            direction: Direction::In,
+            ..
+        } | ParsedTopic::Sysex {
+            direction: Direction::In
+        } | ParsedTopic::System {
+            direction: Direction::In,
+            ..
+        }
+    ) {
         return Ok(());
     }
 
@@ -515,16 +533,12 @@ fn handle_mqtt_publish(
 
 fn mqtt_to_midi_bytes(parsed: &ParsedTopic, payload: &[u8]) -> Result<Vec<u8>, String> {
     let message = match parsed {
-        ParsedTopic::NoteOn {
-            channel, note, ..
-        } => ParsedMidiMessage::NoteOn {
+        ParsedTopic::NoteOn { channel, note, .. } => ParsedMidiMessage::NoteOn {
             channel: *channel,
             note: *note,
             velocity: decode_seven_bit(payload)?,
         },
-        ParsedTopic::NoteOff {
-            channel, note, ..
-        } => ParsedMidiMessage::NoteOff {
+        ParsedTopic::NoteOff { channel, note, .. } => ParsedMidiMessage::NoteOff {
             channel: *channel,
             note: *note,
             velocity: decode_seven_bit(payload)?,

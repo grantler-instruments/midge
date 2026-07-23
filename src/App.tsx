@@ -1,3 +1,6 @@
+import Accordion from "@mui/material/Accordion";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import AccordionSummary from "@mui/material/AccordionSummary";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
@@ -7,15 +10,24 @@ import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
+import SvgIcon from "@mui/material/SvgIcon";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import { useState } from "react";
 import { useBridgeRuntime, useMidiPortNames } from "./hooks/useBridgeRuntime";
-import { getBridgeStatus, startBridge, stopBridge } from "./platform/bridge";
 import { getPlatform } from "./platform";
+import { getBridgeStatus, startBridge, stopBridge } from "./platform/bridge";
 import { useAppStore } from "./stores/app";
+
+function ChevronDownIcon() {
+  return (
+    <SvgIcon>
+      <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41Z" />
+    </SvgIcon>
+  );
+}
 
 function App() {
   useBridgeRuntime();
@@ -105,143 +117,162 @@ function App() {
             </Paper>
           )}
 
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              MQTT
-            </Typography>
-            <Stack spacing={2}>
-              <TextField
-                label="Broker URL"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                fullWidth
-                placeholder="mqtt://127.0.0.1:1883"
-              />
-              <TextField
-                label="Topic prefix"
-                value={prefix}
-                onChange={(e) => setPrefix(e.target.value)}
-                fullWidth
-                helperText="Web apps use MqttMidi({ prefix }). Bridge subscribes to {prefix}/in/… and publishes {prefix}/out/…"
-              />
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+          <Accordion defaultExpanded>
+            <AccordionSummary expandIcon={<ChevronDownIcon />}>
+              <Typography variant="h6">MQTT</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Stack spacing={2}>
                 <TextField
-                  label="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  label="Broker URL"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
                   fullWidth
+                  placeholder="mqtt://127.0.0.1:1883"
                 />
                 <TextField
-                  label="Password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  label="Topic prefix"
+                  value={prefix}
+                  onChange={(e) => setPrefix(e.target.value)}
                   fullWidth
+                  helperText="Web apps use MqttMidi({ prefix }). Bridge subscribes to {prefix}/in/… and publishes {prefix}/out/…"
                 />
-                <TextField
-                  label="Client ID"
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  fullWidth
-                  placeholder="auto"
-                />
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <TextField
+                    label="Username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Client ID"
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    fullWidth
+                    placeholder="auto"
+                  />
+                </Stack>
               </Stack>
-            </Stack>
-          </Paper>
+            </AccordionDetails>
+          </Accordion>
 
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              MIDI
-            </Typography>
-            <Stack spacing={2}>
-              <ToggleButtonGroup
-                exclusive
-                fullWidth
-                color="primary"
-                value={useNamedPorts ? "named" : "virtual"}
-                onChange={(_, value) => {
-                  if (value) setUseNamedPorts(value === "named");
+          <Accordion defaultExpanded>
+            <AccordionSummary expandIcon={<ChevronDownIcon />}>
+              <Typography variant="h6">MIDI</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Stack spacing={2}>
+                <ToggleButtonGroup
+                  exclusive
+                  fullWidth
+                  color="primary"
+                  value={useNamedPorts ? "named" : "virtual"}
+                  onChange={(_, value) => {
+                    if (value) setUseNamedPorts(value === "named");
+                  }}
+                >
+                  <ToggleButton value="virtual">Create virtual port</ToggleButton>
+                  <ToggleButton value="named">Connect existing port</ToggleButton>
+                </ToggleButtonGroup>
+                {useNamedPorts ? (
+                  <>
+                    <FormControl fullWidth>
+                      <InputLabel id="midi-in-label">MIDI in</InputLabel>
+                      <Select
+                        labelId="midi-in-label"
+                        label="MIDI in"
+                        value={midiIn}
+                        onChange={(e) => setMidiIn(e.target.value)}
+                      >
+                        {inputs.map((port) => (
+                          <MenuItem key={port} value={port}>
+                            {port}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl fullWidth>
+                      <InputLabel id="midi-out-label">MIDI out</InputLabel>
+                      <Select
+                        labelId="midi-out-label"
+                        label="MIDI out"
+                        value={midiOut}
+                        onChange={(e) => setMidiOut(e.target.value)}
+                      >
+                        {outputs.map((port) => (
+                          <MenuItem key={port} value={port}>
+                            {port}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </>
+                ) : (
+                  <TextField
+                    label="Virtual port name"
+                    value={virtualPort}
+                    onChange={(e) => setVirtualPort(e.target.value)}
+                    fullWidth
+                    helperText="Creates two virtual endpoints with this name: Live MIDI In (from MQTT) and Live MIDI Out (to MQTT)."
+                  />
+                )}
+                <Stack direction="row" spacing={1}>
+                  <Button variant="contained" disabled={bridgeRunning} onClick={handleStart}>
+                    Start bridge
+                  </Button>
+                  <Button variant="outlined" disabled={!bridgeRunning} onClick={handleStop}>
+                    Stop bridge
+                  </Button>
+                </Stack>
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
+
+          <Accordion defaultExpanded>
+            <AccordionSummary expandIcon={<ChevronDownIcon />}>
+              <Stack
+                direction="row"
+                sx={{
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  width: "100%",
+                  mr: 1,
                 }}
               >
-                <ToggleButton value="virtual">Create virtual port</ToggleButton>
-                <ToggleButton value="named">Connect existing port</ToggleButton>
-              </ToggleButtonGroup>
-              {useNamedPorts ? (
-                <>
-                  <FormControl fullWidth>
-                    <InputLabel id="midi-in-label">MIDI in</InputLabel>
-                    <Select
-                      labelId="midi-in-label"
-                      label="MIDI in"
-                      value={midiIn}
-                      onChange={(e) => setMidiIn(e.target.value)}
-                    >
-                      {inputs.map((port) => (
-                        <MenuItem key={port} value={port}>
-                          {port}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <FormControl fullWidth>
-                    <InputLabel id="midi-out-label">MIDI out</InputLabel>
-                    <Select
-                      labelId="midi-out-label"
-                      label="MIDI out"
-                      value={midiOut}
-                      onChange={(e) => setMidiOut(e.target.value)}
-                    >
-                      {outputs.map((port) => (
-                        <MenuItem key={port} value={port}>
-                          {port}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </>
-              ) : (
-                <TextField
-                  label="Virtual port name"
-                  value={virtualPort}
-                  onChange={(e) => setVirtualPort(e.target.value)}
-                  fullWidth
-                  helperText="Creates two virtual endpoints with this name: Live MIDI In (from MQTT) and Live MIDI Out (to MQTT)."
-                />
-              )}
-              <Stack direction="row" spacing={1}>
-                <Button variant="contained" disabled={bridgeRunning} onClick={handleStart}>
-                  Start bridge
-                </Button>
-                <Button variant="outlined" disabled={!bridgeRunning} onClick={handleStop}>
-                  Stop bridge
+                <Typography variant="h6">Activity log</Typography>
+                <Button
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    clearLogs();
+                  }}
+                >
+                  Clear
                 </Button>
               </Stack>
-            </Stack>
-          </Paper>
-
-          <Paper sx={{ p: 3 }}>
-            <Stack
-              direction="row"
-              sx={{ justifyContent: "space-between", alignItems: "center", mb: 2 }}
-            >
-              <Typography variant="h6">Activity log</Typography>
-              <Button size="small" onClick={clearLogs}>
-                Clear
-              </Button>
-            </Stack>
-            <Stack spacing={1}>
-              {logEntries.length === 0 && (
-                <Typography variant="body2" color="text.secondary">
-                  MQTT↔MIDI traffic and status messages appear here.
-                </Typography>
-              )}
-              {logEntries.map((entry, index) => (
-                <Typography key={`${entry.direction}-${index}`} variant="body2" component="div">
-                  [{entry.direction}] {entry.detail}
-                </Typography>
-              ))}
-            </Stack>
-          </Paper>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Stack spacing={1}>
+                {logEntries.length === 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    MQTT↔MIDI traffic and status messages appear here.
+                  </Typography>
+                )}
+                {logEntries.map((entry) => (
+                  <Typography key={entry.id} variant="body2" component="div">
+                    [{entry.direction}] {entry.detail}
+                  </Typography>
+                ))}
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
         </Stack>
       </Container>
     </Box>

@@ -149,12 +149,10 @@ pub fn parse_topic(prefix: &str, topic: &str) -> Option<ParsedTopic> {
 
     match parts[1] {
         "sysex" if parts.len() == 2 => Some(ParsedTopic::Sysex { direction }),
-        "clock" | "start" | "stop" | "continue" if parts.len() == 2 => {
-            Some(ParsedTopic::System {
-                direction,
-                kind: SystemMessageType::from_str(parts[1])?,
-            })
-        }
+        "clock" | "start" | "stop" | "continue" if parts.len() == 2 => Some(ParsedTopic::System {
+            direction,
+            kind: SystemMessageType::from_str(parts[1])?,
+        }),
         "cc" if parts.len() == 4 => {
             let channel = parts[2].parse().ok().filter(|c| is_valid_channel(*c))?;
             let controller = parts[3].parse().ok().filter(|c| is_valid_controller(*c))?;

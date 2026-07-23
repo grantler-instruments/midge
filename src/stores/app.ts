@@ -15,7 +15,7 @@ interface AppState {
   clientId: string;
   useNamedPorts: boolean;
   bridgeRunning: boolean;
-  logEntries: BridgeLogEntry[];
+  logEntries: Array<BridgeLogEntry & { id: number }>;
   setDarkMode: (darkMode: boolean) => void;
   setUrl: (url: string) => void;
   setPrefix: (prefix: string) => void;
@@ -32,6 +32,7 @@ interface AppState {
 }
 
 const MAX_LOG_ENTRIES = 200;
+let nextLogEntryId = 0;
 
 export const useAppStore = create<AppState>()(
   devtools(
@@ -62,7 +63,10 @@ export const useAppStore = create<AppState>()(
         setBridgeRunning: (bridgeRunning) => set({ bridgeRunning }),
         pushLogEntry: (entry) =>
           set((s) => ({
-            logEntries: [entry, ...s.logEntries].slice(0, MAX_LOG_ENTRIES),
+            logEntries: [{ ...entry, id: nextLogEntryId++ }, ...s.logEntries].slice(
+              0,
+              MAX_LOG_ENTRIES,
+            ),
           })),
         clearLogs: () => set({ logEntries: [] }),
       }),

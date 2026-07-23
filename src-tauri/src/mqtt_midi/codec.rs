@@ -3,7 +3,10 @@ use serde::Deserialize;
 
 pub fn decode_seven_bit(payload: &[u8]) -> Result<u8, String> {
     if payload.len() != 1 {
-        return Err(format!("expected 1-byte payload, got {} bytes", payload.len()));
+        return Err(format!(
+            "expected 1-byte payload, got {} bytes",
+            payload.len()
+        ));
     }
     let value = payload[0];
     if !is_valid_seven_bit(value) {
@@ -49,22 +52,11 @@ struct SysexJson {
 pub fn decode_sysex_json(payload: &[u8]) -> Result<Vec<u8>, String> {
     let parsed: SysexJson = serde_json::from_slice(payload)
         .map_err(|err| format!("SysEx payload must be JSON: {err}"))?;
-    for byte in &parsed.data {
-        if *byte > 255 {
-            return Err(format!("invalid SysEx byte in JSON: {byte}"));
-        }
-    }
     Ok(parsed.data)
 }
 
 pub fn encode_sysex_json(data: &[u8]) -> Result<Vec<u8>, String> {
-    for byte in data {
-        if *byte > 255 {
-            return Err(format!("invalid SysEx byte: {byte}"));
-        }
-    }
-    serde_json::to_vec(&serde_json::json!({ "data": data }))
-        .map_err(|err| err.to_string())
+    serde_json::to_vec(&serde_json::json!({ "data": data })).map_err(|err| err.to_string())
 }
 
 pub fn encode_empty_payload() -> Vec<u8> {
