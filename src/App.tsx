@@ -2,14 +2,14 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
 import FormControl from "@mui/material/FormControl";
-import FormControlLabel from "@mui/material/FormControlLabel";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
-import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import { useState } from "react";
 import { useBridgeRuntime, useMidiPortNames } from "./hooks/useBridgeRuntime";
@@ -81,14 +81,22 @@ function App() {
     <Box sx={{ minHeight: "100vh", py: 4 }}>
       <Container maxWidth="md">
         <Stack spacing={3}>
-          <Box>
-            <Typography variant="h4">Midge</Typography>
-            <Typography variant="body2" color="text.secondary">
-              MQTT↔MIDI bridge ({platform}) — compatible with{" "}
-              <Typography component="span" variant="body2" color="text.secondary">
-                @grantler-instruments/mqtt-midi
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <Box>
+              <Typography variant="h4">Midge</Typography>
+              <Typography variant="body2" color="text.secondary">
+                MQTT↔MIDI bridge ({platform}) — compatible with{" "}
+                <Typography component="span" variant="body2" color="text.secondary">
+                  @grantler-instruments/mqtt-midi
+                </Typography>
               </Typography>
-            </Typography>
+            </Box>
+            <Box
+              component="img"
+              src="/logo.svg"
+              alt="Midge logo"
+              sx={{ width: 64, height: 64, flexShrink: 0 }}
+            />
           </Box>
 
           {statusMessage && (
@@ -146,15 +154,18 @@ function App() {
               MIDI
             </Typography>
             <Stack spacing={2}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={useNamedPorts}
-                    onChange={(_, checked) => setUseNamedPorts(checked)}
-                  />
-                }
-                label="Use named hardware / loopback ports"
-              />
+              <ToggleButtonGroup
+                exclusive
+                fullWidth
+                color="primary"
+                value={useNamedPorts ? "named" : "virtual"}
+                onChange={(_, value) => {
+                  if (value) setUseNamedPorts(value === "named");
+                }}
+              >
+                <ToggleButton value="virtual">Create virtual port</ToggleButton>
+                <ToggleButton value="named">Connect existing port</ToggleButton>
+              </ToggleButtonGroup>
               {useNamedPorts ? (
                 <>
                   <FormControl fullWidth>

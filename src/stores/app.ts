@@ -68,6 +68,14 @@ export const useAppStore = create<AppState>()(
       }),
       {
         name: "midge-app",
+        version: 1,
+        migrate: (persisted, version) => {
+          const state = persisted as AppState;
+          if (version < 1 && state.virtualPort === "mqtt-midi-bridge") {
+            state.virtualPort = DEFAULT_VIRTUAL_PORT_NAME;
+          }
+          return state;
+        },
         partialize: (s) => ({
           darkMode: s.darkMode,
           url: s.url,

@@ -4,7 +4,7 @@ use std::thread::{self, JoinHandle};
 
 use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 #[cfg(unix)]
-use midir::os::unix::VirtualOutput;
+use midir::os::unix::{VirtualInput, VirtualOutput};
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, QoS, Transport};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
@@ -20,7 +20,7 @@ use crate::mqtt_midi::{
     to_midi_bytes, Direction, ParsedMidiMessage, ParsedTopic,
 };
 
-pub const DEFAULT_VIRTUAL_PORT_NAME: &str = "mqtt-midi-bridge";
+pub const DEFAULT_VIRTUAL_PORT_NAME: &str = "midge";
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -365,13 +365,22 @@ fn open_midi_input(
     raw_midi_tx: Sender<Vec<u8>>,
 ) -> Result<MidiInputConnection<()>, String> {
     if config.use_virtual {
-        match connect_midi_input(&config.midi_in, raw_midi_tx.clone()) {
-            Ok(conn) => return Ok(conn),
-            Err(_) if supports_virtual_midi_ports() => {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                return connect_midi_input(&config.midi_in, raw_midi_tx);
-            }
-            Err(err) => return Err(err),
+        #[cfg(unix)]
+        {
+            let mut midi_in = MidiInput::new("midge-bridge-in").map_err(|e| e.to_string())?;
+            return midi_in
+                .create_virtual(
+                    &config.midi_in,
+                    move |_timestamp, message, _| {
+                        let _ = raw_midi_tx.send(message.to_vec());
+                    },
+                    (),
+                )
+                .map_err(|e| e.to_string());
+        }
+        #[cfg(not(unix))]
+        {
+            return Err("Virtual MIDI ports are not supported on this platform".to_string());
         }
     }
 

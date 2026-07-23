@@ -28,4 +28,4 @@ export interface BridgeLogEntry {
   detail: string;
 }
 
-export const DEFAULT_VIRTUAL_PORT_NAME = "mqtt-midi-bridge";
+export const DEFAULT_VIRTUAL_PORT_NAME = "midge";
