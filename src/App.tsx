@@ -6,6 +6,7 @@ import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
+import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
@@ -17,7 +18,6 @@ import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import { useState } from "react";
 import { useBridgeRuntime, useMidiPortNames } from "./hooks/useBridgeRuntime";
-import { getPlatform } from "./platform";
 import { connectMqtt, disconnectMqtt, startMidi, stopMidi } from "./platform/bridge";
 import { useAppStore } from "./stores/app";
 
@@ -31,7 +31,6 @@ function ChevronDownIcon() {
 
 function App() {
   useBridgeRuntime();
-  const platform = getPlatform();
   const { inputs, outputs } = useMidiPortNames();
 
   const url = useAppStore((s) => s.url);
@@ -136,10 +135,26 @@ function App() {
             <Box>
               <Typography variant="h4">Midge</Typography>
               <Typography variant="body2" color="text.secondary">
-                MQTT↔MIDI bridge ({platform}) — compatible with{" "}
-                <Typography component="span" variant="body2" color="text.secondary">
+                Desktop MQTT↔MIDI bridge — connect your DAW and hardware over the network.
+                Compatible with{" "}
+                <Link
+                  href="https://github.com/grantler-instruments/mqtt-midi"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  color="inherit"
+                >
                   @grantler-instruments/mqtt-midi
-                </Typography>
+                </Link>
+                , and best friend of{" "}
+                <Link
+                  href="https://github.com/grantler-instruments/BYODMCSE"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  color="inherit"
+                >
+                  BYODMCSE
+                </Link>
+                .
               </Typography>
             </Box>
             <Box

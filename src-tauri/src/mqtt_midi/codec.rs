@@ -62,3 +62,60 @@ pub fn encode_sysex_json(data: &[u8]) -> Result<Vec<u8>, String> {
 pub fn encode_empty_payload() -> Vec<u8> {
     Vec::new()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seven_bit_round_trip() {
+        assert_eq!(encode_seven_bit(0).unwrap(), vec![0]);
+        assert_eq!(encode_seven_bit(127).unwrap(), vec![127]);
+        assert_eq!(decode_seven_bit(&[42]).unwrap(), 42);
+    }
+
+    #[test]
+    fn seven_bit_rejects_invalid_length_and_range() {
+        assert!(encode_seven_bit(128).is_err());
+        assert!(decode_seven_bit(&[]).is_err());
+        assert!(decode_seven_bit(&[1, 2]).is_err());
+        assert!(decode_seven_bit(&[128]).is_err());
+    }
+
+    #[test]
+    fn pitch_bend_round_trip() {
+        assert_eq!(encode_pitch_bend(0).unwrap(), vec![0, 0]);
+        assert_eq!(encode_pitch_bend(8192).unwrap(), vec![0, 64]);
+        assert_eq!(encode_pitch_bend(16383).unwrap(), vec![127, 127]);
+        assert_eq!(decode_pitch_bend(&[0, 64]).unwrap(), 8192);
+        assert_eq!(decode_pitch_bend(&[127, 127]).unwrap(), 16383);
+    }
+
+    #[test]
+    fn pitch_bend_rejects_invalid_length_and_range() {
+        assert!(encode_pitch_bend(16384).is_err());
+        assert!(decode_pitch_bend(&[0]).is_err());
+        assert!(decode_pitch_bend(&[0, 64, 0]).is_err());
+        assert!(decode_pitch_bend(&[128, 0]).is_err());
+        assert!(decode_pitch_bend(&[0, 128]).is_err());
+    }
+
+    #[test]
+    fn sysex_json_round_trip() {
+        let data = vec![0xf0, 0x7e, 0x00, 0xf7];
+        let encoded = encode_sysex_json(&data).unwrap();
+        assert_eq!(encoded, br#"{"data":[240,126,0,247]}"#);
+        assert_eq!(decode_sysex_json(&encoded).unwrap(), data);
+    }
+
+    #[test]
+    fn sysex_json_rejects_invalid_payload() {
+        assert!(decode_sysex_json(br"not-json").is_err());
+        assert!(decode_sysex_json(br#"{"other":[]}"#).is_err());
+    }
+
+    #[test]
+    fn empty_payload_is_empty() {
+        assert!(encode_empty_payload().is_empty());
+    }
+}

@@ -244,4 +244,104 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn note_on_and_note_off_round_trip() {
+        let note_on = build_note_on_topic("remote", Direction::Out, 1, 60);
+        assert_eq!(
+            parse_topic("remote", &note_on).unwrap(),
+            ParsedTopic::NoteOn {
+                direction: Direction::Out,
+                channel: 1,
+                note: 60,
+            }
+        );
+
+        let note_off = build_note_off_topic("remote", Direction::In, 16, 127);
+        assert_eq!(
+            parse_topic("remote", &note_off).unwrap(),
+            ParsedTopic::NoteOff {
+                direction: Direction::In,
+                channel: 16,
+                note: 127,
+            }
+        );
+    }
+
+    #[test]
+    fn program_pitch_bend_sysex_and_system_round_trip() {
+        assert_eq!(
+            parse_topic(
+                "remote",
+                &build_program_change_topic("remote", Direction::Out, 3)
+            )
+            .unwrap(),
+            ParsedTopic::ProgramChange {
+                direction: Direction::Out,
+                channel: 3,
+            }
+        );
+        assert_eq!(
+            parse_topic(
+                "remote",
+                &build_pitch_bend_topic("remote", Direction::In, 8)
+            )
+            .unwrap(),
+            ParsedTopic::PitchBend {
+                direction: Direction::In,
+                channel: 8,
+            }
+        );
+        assert_eq!(
+            parse_topic("remote", &build_sysex_topic("remote", Direction::Out)).unwrap(),
+            ParsedTopic::Sysex {
+                direction: Direction::Out,
+            }
+        );
+        for kind in [
+            SystemMessageType::Clock,
+            SystemMessageType::Start,
+            SystemMessageType::Stop,
+            SystemMessageType::Continue,
+        ] {
+            let topic = build_system_topic("remote", Direction::Out, kind);
+            assert_eq!(
+                parse_topic("remote", &topic).unwrap(),
+                ParsedTopic::System {
+                    direction: Direction::Out,
+                    kind,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_bad_prefix_channel_and_shape() {
+        assert!(parse_topic("remote", "other/out/cc/1/7").is_none());
+        assert!(parse_topic("remote", "remote/side/cc/1/7").is_none());
+        assert!(parse_topic("remote", "remote/out/cc/0/7").is_none());
+        assert!(parse_topic("remote", "remote/out/cc/17/7").is_none());
+        assert!(parse_topic("remote", "remote/out/noteon/1/128").is_none());
+        assert!(parse_topic("remote", "remote/out/cc/1").is_none());
+        assert!(parse_topic("remote", "remote/out").is_none());
+    }
+
+    #[test]
+    fn in_subscription_topics_lists_expected_filters() {
+        assert_eq!(
+            in_subscription_topics("remote"),
+            vec![
+                "remote/in/noteon/#".to_string(),
+                "remote/in/noteoff/#".to_string(),
+                "remote/in/cc/#".to_string(),
+                "remote/in/program/#".to_string(),
+                "remote/in/pitchbend/#".to_string(),
+                "remote/in/sysex".to_string(),
+                "remote/in/clock".to_string(),
+                "remote/in/start".to_string(),
+                "remote/in/stop".to_string(),
+                "remote/in/continue".to_string(),
+            ]
+        );
+    }
 }

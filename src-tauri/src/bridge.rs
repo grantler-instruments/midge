@@ -13,11 +13,8 @@ use tokio::task::JoinHandle as TokioJoinHandle;
 
 use crate::devices::{find_input_port_index, find_output_port_index, PortLists};
 use crate::mqtt_midi::{
-    build_control_change_topic, build_note_off_topic, build_note_on_topic, build_pitch_bend_topic,
-    build_program_change_topic, build_sysex_topic, build_system_topic, decode_pitch_bend,
-    decode_seven_bit, decode_sysex_json, encode_empty_payload, encode_pitch_bend, encode_seven_bit,
-    encode_sysex_json, in_subscription_topics, parse_midi_message, parse_topic, to_midi_bytes,
-    Direction, ParsedMidiMessage, ParsedTopic,
+    decode_pitch_bend, decode_seven_bit, decode_sysex_json, in_subscription_topics,
+    mqtt_payload_from_midi, parse_topic, to_midi_bytes, Direction, ParsedMidiMessage, ParsedTopic,
 };
 
 pub const DEFAULT_VIRTUAL_PORT_NAME: &str = "midge";
@@ -691,52 +688,4 @@ fn mqtt_to_midi_bytes(parsed: &ParsedTopic, payload: &[u8]) -> Result<Vec<u8>, S
         ParsedTopic::System { kind, .. } => ParsedMidiMessage::System(*kind),
     };
     Ok(to_midi_bytes(&message))
-}
-
-fn mqtt_payload_from_midi(prefix: &str, message: &[u8]) -> Option<(String, Vec<u8>)> {
-    let parsed = parse_midi_message(message)?;
-    let direction = Direction::Out;
-
-    match parsed {
-        ParsedMidiMessage::NoteOn {
-            channel,
-            note,
-            velocity,
-        } => Some((
-            build_note_on_topic(prefix, direction, channel, note),
-            encode_seven_bit(velocity).ok()?,
-        )),
-        ParsedMidiMessage::NoteOff {
-            channel,
-            note,
-            velocity,
-        } => Some((
-            build_note_off_topic(prefix, direction, channel, note),
-            encode_seven_bit(velocity).ok()?,
-        )),
-        ParsedMidiMessage::ControlChange {
-            channel,
-            controller,
-            value,
-        } => Some((
-            build_control_change_topic(prefix, direction, channel, controller),
-            encode_seven_bit(value).ok()?,
-        )),
-        ParsedMidiMessage::ProgramChange { channel, program } => Some((
-            build_program_change_topic(prefix, direction, channel),
-            encode_seven_bit(program).ok()?,
-        )),
-        ParsedMidiMessage::PitchBend { channel, value } => Some((
-            build_pitch_bend_topic(prefix, direction, channel),
-            encode_pitch_bend(value).ok()?,
-        )),
-        ParsedMidiMessage::Sysex { data } => Some((
-            build_sysex_topic(prefix, direction),
-            encode_sysex_json(&data).ok()?,
-        )),
-        ParsedMidiMessage::System(kind) => Some((
-            build_system_topic(prefix, direction, kind),
-            encode_empty_payload(),
-        )),
-    }
 }

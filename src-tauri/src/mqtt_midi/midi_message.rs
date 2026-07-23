@@ -139,3 +139,154 @@ pub fn to_midi_bytes(parsed: &ParsedMidiMessage) -> Vec<u8> {
             .unwrap_or_default(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_note_on() {
+        assert_eq!(
+            parse_midi_message(&[0x90, 60, 100]),
+            Some(ParsedMidiMessage::NoteOn {
+                channel: 1,
+                note: 60,
+                velocity: 100,
+            })
+        );
+    }
+
+    #[test]
+    fn note_on_velocity_zero_becomes_note_off() {
+        assert_eq!(
+            parse_midi_message(&[0x90, 60, 0]),
+            Some(ParsedMidiMessage::NoteOff {
+                channel: 1,
+                note: 60,
+                velocity: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn parses_note_off_control_change_program_and_pitch_bend() {
+        assert_eq!(
+            parse_midi_message(&[0x81, 60, 64]),
+            Some(ParsedMidiMessage::NoteOff {
+                channel: 2,
+                note: 60,
+                velocity: 64,
+            })
+        );
+        assert_eq!(
+            parse_midi_message(&[0xb0, 7, 100]),
+            Some(ParsedMidiMessage::ControlChange {
+                channel: 1,
+                controller: 7,
+                value: 100,
+            })
+        );
+        assert_eq!(
+            parse_midi_message(&[0xc0, 42]),
+            Some(ParsedMidiMessage::ProgramChange {
+                channel: 1,
+                program: 42,
+            })
+        );
+        assert_eq!(
+            parse_midi_message(&[0xe0, 0, 64]),
+            Some(ParsedMidiMessage::PitchBend {
+                channel: 1,
+                value: 8192,
+            })
+        );
+    }
+
+    #[test]
+    fn parses_sysex_and_system_messages() {
+        let sysex = vec![0xf0, 0x7e, 0x00, 0xf7];
+        assert_eq!(
+            parse_midi_message(&sysex),
+            Some(ParsedMidiMessage::Sysex { data: sysex })
+        );
+        assert_eq!(
+            parse_midi_message(&[0xf8]),
+            Some(ParsedMidiMessage::System(SystemMessageType::Clock))
+        );
+        assert_eq!(
+            parse_midi_message(&[0xfa]),
+            Some(ParsedMidiMessage::System(SystemMessageType::Start))
+        );
+        assert_eq!(
+            parse_midi_message(&[0xfc]),
+            Some(ParsedMidiMessage::System(SystemMessageType::Stop))
+        );
+        assert_eq!(
+            parse_midi_message(&[0xfb]),
+            Some(ParsedMidiMessage::System(SystemMessageType::Continue))
+        );
+    }
+
+    #[test]
+    fn rejects_empty_truncated_and_unsupported() {
+        assert_eq!(parse_midi_message(&[]), None);
+        assert_eq!(parse_midi_message(&[0x90, 60]), None);
+        assert_eq!(parse_midi_message(&[0x80, 60]), None);
+        assert_eq!(parse_midi_message(&[0xb0, 7]), None);
+        assert_eq!(parse_midi_message(&[0xc0]), None);
+        assert_eq!(parse_midi_message(&[0xe0, 0]), None);
+        assert_eq!(parse_midi_message(&[0xf2, 0x00, 0x00]), None);
+        assert_eq!(parse_midi_message(&[0xf9]), None); // tick, unsupported
+    }
+
+    #[test]
+    fn to_midi_bytes_round_trips_channel_and_system_messages() {
+        let cases = [
+            ParsedMidiMessage::NoteOn {
+                channel: 1,
+                note: 60,
+                velocity: 100,
+            },
+            ParsedMidiMessage::NoteOff {
+                channel: 2,
+                note: 60,
+                velocity: 64,
+            },
+            ParsedMidiMessage::ControlChange {
+                channel: 1,
+                controller: 7,
+                value: 100,
+            },
+            ParsedMidiMessage::ProgramChange {
+                channel: 1,
+                program: 42,
+            },
+            ParsedMidiMessage::PitchBend {
+                channel: 1,
+                value: 8192,
+            },
+            ParsedMidiMessage::Sysex {
+                data: vec![0xf0, 0x7e, 0x00, 0xf7],
+            },
+            ParsedMidiMessage::System(SystemMessageType::Clock),
+            ParsedMidiMessage::System(SystemMessageType::Start),
+            ParsedMidiMessage::System(SystemMessageType::Stop),
+            ParsedMidiMessage::System(SystemMessageType::Continue),
+        ];
+
+        for message in cases {
+            let bytes = to_midi_bytes(&message);
+            assert_eq!(parse_midi_message(&bytes), Some(message));
+        }
+    }
+
+    #[test]
+    fn note_off_from_velocity_zero_round_trips_as_note_off_status() {
+        let message = ParsedMidiMessage::NoteOff {
+            channel: 1,
+            note: 60,
+            velocity: 0,
+        };
+        assert_eq!(to_midi_bytes(&message), vec![0x80, 60, 0]);
+    }
+}
