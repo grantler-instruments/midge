@@ -2,7 +2,10 @@ mod bridge;
 mod devices;
 mod mqtt_midi;
 
-use bridge::{get_bridge_status, list_midi_port_names, start_bridge, stop_bridge, BridgeState};
+use bridge::{
+    connect_mqtt, disconnect_mqtt, get_bridge_status, list_midi_port_names, start_midi, stop_midi,
+    BridgeState,
+};
 use tauri::{Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -14,8 +17,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_midi_port_names,
             get_bridge_status,
-            start_bridge,
-            stop_bridge,
+            connect_mqtt,
+            disconnect_mqtt,
+            start_midi,
+            stop_midi,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");

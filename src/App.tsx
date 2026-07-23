@@ -7,10 +7,10 @@ import Container from "@mui/material/Container";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
-import Paper from "@mui/material/Paper";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import SvgIcon from "@mui/material/SvgIcon";
+import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
@@ -18,7 +18,7 @@ import Typography from "@mui/material/Typography";
 import { useState } from "react";
 import { useBridgeRuntime, useMidiPortNames } from "./hooks/useBridgeRuntime";
 import { getPlatform } from "./platform";
-import { getBridgeStatus, startBridge, stopBridge } from "./platform/bridge";
+import { connectMqtt, disconnectMqtt, startMidi, stopMidi } from "./platform/bridge";
 import { useAppStore } from "./stores/app";
 
 function ChevronDownIcon() {
@@ -43,7 +43,8 @@ function App() {
   const password = useAppStore((s) => s.password);
   const clientId = useAppStore((s) => s.clientId);
   const useNamedPorts = useAppStore((s) => s.useNamedPorts);
-  const bridgeRunning = useAppStore((s) => s.bridgeRunning);
+  const mqttConnected = useAppStore((s) => s.mqttConnected);
+  const midiListening = useAppStore((s) => s.midiListening);
   const logEntries = useAppStore((s) => s.logEntries);
   const setUrl = useAppStore((s) => s.setUrl);
   const setPrefix = useAppStore((s) => s.setPrefix);
@@ -54,38 +55,76 @@ function App() {
   const setPassword = useAppStore((s) => s.setPassword);
   const setClientId = useAppStore((s) => s.setClientId);
   const setUseNamedPorts = useAppStore((s) => s.setUseNamedPorts);
-  const setBridgeRunning = useAppStore((s) => s.setBridgeRunning);
+  const setMqttConnected = useAppStore((s) => s.setMqttConnected);
+  const setMidiListening = useAppStore((s) => s.setMidiListening);
+  const pushLogEntry = useAppStore((s) => s.pushLogEntry);
   const clearLogs = useAppStore((s) => s.clearLogs);
 
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isChangingMqttState, setIsChangingMqttState] = useState(false);
+  const [isChangingMidiState, setIsChangingMidiState] = useState(false);
 
-  const handleStart = async () => {
+  const bridgeConfig = {
+    url,
+    prefix,
+    virtual: useNamedPorts ? null : virtualPort || null,
+    midiIn: useNamedPorts ? midiIn || null : null,
+    midiOut: useNamedPorts ? midiOut || null : null,
+    username: username || null,
+    password: password || null,
+    clientId: clientId || null,
+  };
+  const reportError = (err: unknown) => {
+    pushLogEntry({
+      direction: "error",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  };
+
+  const handleConnectMqtt = async () => {
+    setIsChangingMqttState(true);
     try {
-      await startBridge({
-        url,
-        prefix,
-        virtual: useNamedPorts ? null : virtualPort || null,
-        midiIn: useNamedPorts ? midiIn || null : null,
-        midiOut: useNamedPorts ? midiOut || null : null,
-        username: username || null,
-        password: password || null,
-        clientId: clientId || null,
-      });
-      const status = await getBridgeStatus();
-      setBridgeRunning(status.running);
-      setStatusMessage("Bridge started");
+      await connectMqtt(bridgeConfig);
+      setMqttConnected(true);
     } catch (err) {
-      setStatusMessage(err instanceof Error ? err.message : String(err));
+      reportError(err);
+    } finally {
+      setIsChangingMqttState(false);
     }
   };
 
-  const handleStop = async () => {
+  const handleDisconnectMqtt = async () => {
+    setIsChangingMqttState(true);
     try {
-      await stopBridge();
-      setBridgeRunning(false);
-      setStatusMessage("Bridge stopped");
+      await disconnectMqtt();
+      setMqttConnected(false);
     } catch (err) {
-      setStatusMessage(err instanceof Error ? err.message : String(err));
+      reportError(err);
+    } finally {
+      setIsChangingMqttState(false);
+    }
+  };
+
+  const handleStartMidi = async () => {
+    setIsChangingMidiState(true);
+    try {
+      await startMidi(bridgeConfig);
+      setMidiListening(true);
+    } catch (err) {
+      reportError(err);
+    } finally {
+      setIsChangingMidiState(false);
+    }
+  };
+
+  const handleStopMidi = async () => {
+    setIsChangingMidiState(true);
+    try {
+      await stopMidi();
+      setMidiListening(false);
+    } catch (err) {
+      reportError(err);
+    } finally {
+      setIsChangingMidiState(false);
     }
   };
 
@@ -111,15 +150,28 @@ function App() {
             />
           </Box>
 
-          {statusMessage && (
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="body2">{statusMessage}</Typography>
-            </Paper>
-          )}
-
           <Accordion defaultExpanded>
             <AccordionSummary expandIcon={<ChevronDownIcon />}>
-              <Typography variant="h6">MQTT</Typography>
+              <Stack
+                direction="row"
+                sx={{ justifyContent: "space-between", alignItems: "center", width: "100%", mr: 1 }}
+              >
+                <Typography variant="h6">MQTT</Typography>
+                <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Connect
+                  </Typography>
+                  <Switch
+                    checked={mqttConnected}
+                    disabled={isChangingMqttState}
+                    slotProps={{ input: { "aria-label": "Connect MQTT bridge" } }}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(_, checked) => {
+                      void (checked ? handleConnectMqtt() : handleDisconnectMqtt());
+                    }}
+                  />
+                </Stack>
+              </Stack>
             </AccordionSummary>
             <AccordionDetails>
               <Stack spacing={2}>
@@ -165,7 +217,26 @@ function App() {
 
           <Accordion defaultExpanded>
             <AccordionSummary expandIcon={<ChevronDownIcon />}>
-              <Typography variant="h6">MIDI</Typography>
+              <Stack
+                direction="row"
+                sx={{ justifyContent: "space-between", alignItems: "center", width: "100%", mr: 1 }}
+              >
+                <Typography variant="h6">MIDI</Typography>
+                <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Listen
+                  </Typography>
+                  <Switch
+                    checked={midiListening}
+                    disabled={isChangingMidiState}
+                    slotProps={{ input: { "aria-label": "Listen for MIDI" } }}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(_, checked) => {
+                      void (checked ? handleStartMidi() : handleStopMidi());
+                    }}
+                  />
+                </Stack>
+              </Stack>
             </AccordionSummary>
             <AccordionDetails>
               <Stack spacing={2}>
@@ -223,40 +294,13 @@ function App() {
                     helperText="Creates two virtual endpoints with this name: Live MIDI In (from MQTT) and Live MIDI Out (to MQTT)."
                   />
                 )}
-                <Stack direction="row" spacing={1}>
-                  <Button variant="contained" disabled={bridgeRunning} onClick={handleStart}>
-                    Start bridge
-                  </Button>
-                  <Button variant="outlined" disabled={!bridgeRunning} onClick={handleStop}>
-                    Stop bridge
-                  </Button>
-                </Stack>
               </Stack>
             </AccordionDetails>
           </Accordion>
 
           <Accordion defaultExpanded>
             <AccordionSummary expandIcon={<ChevronDownIcon />}>
-              <Stack
-                direction="row"
-                sx={{
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  width: "100%",
-                  mr: 1,
-                }}
-              >
-                <Typography variant="h6">Activity log</Typography>
-                <Button
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    clearLogs();
-                  }}
-                >
-                  Clear
-                </Button>
-              </Stack>
+              <Typography variant="h6">Activity log</Typography>
             </AccordionSummary>
             <AccordionDetails>
               <Stack spacing={1}>
@@ -270,6 +314,11 @@ function App() {
                     [{entry.direction}] {entry.detail}
                   </Typography>
                 ))}
+                <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                  <Button size="small" onClick={clearLogs}>
+                    Clear
+                  </Button>
+                </Box>
               </Stack>
             </AccordionDetails>
           </Accordion>

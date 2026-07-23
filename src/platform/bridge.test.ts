@@ -6,26 +6,32 @@ const { getPlatform } = vi.hoisted(() => ({
 
 vi.mock("./index", () => ({ getPlatform }));
 vi.mock("./bridge.tauri", () => ({
+  connectMqtt: vi.fn(),
+  disconnectMqtt: vi.fn(),
   getBridgeStatus: vi.fn(),
   listMidiPortNames: vi.fn(),
-  startBridge: vi.fn(),
-  stopBridge: vi.fn(),
+  startMidi: vi.fn(),
+  stopMidi: vi.fn(),
   listenBridgeLogs: vi.fn(),
 }));
 vi.mock("./bridge.web", () => ({
+  connectMqtt: vi.fn(),
+  disconnectMqtt: vi.fn(),
   getBridgeStatus: vi.fn(),
   listMidiPortNames: vi.fn(),
-  startBridge: vi.fn(),
-  stopBridge: vi.fn(),
+  startMidi: vi.fn(),
+  stopMidi: vi.fn(),
   listenBridgeLogs: vi.fn(),
 }));
 
 import {
+  connectMqtt,
+  disconnectMqtt,
   getBridgeStatus,
   listenBridgeLogs,
   listMidiPortNames,
-  startBridge,
-  stopBridge,
+  startMidi,
+  stopMidi,
 } from "./bridge";
 import * as tauriBridge from "./bridge.tauri";
 import * as webBridge from "./bridge.web";
@@ -45,19 +51,26 @@ describe("bridge platform facade", () => {
       inputs: ["in"],
       outputs: ["out"],
     });
-    vi.mocked(tauriBridge.getBridgeStatus).mockResolvedValue({ running: true });
+    vi.mocked(tauriBridge.getBridgeStatus).mockResolvedValue({
+      mqttConnected: true,
+      midiListening: false,
+    });
     vi.mocked(tauriBridge.listenBridgeLogs).mockResolvedValue(unlisten);
 
     await expect(listMidiPortNames()).resolves.toEqual({ inputs: ["in"], outputs: ["out"] });
-    await expect(getBridgeStatus()).resolves.toEqual({ running: true });
-    await startBridge(config);
-    await stopBridge();
+    await expect(getBridgeStatus()).resolves.toEqual({ mqttConnected: true, midiListening: false });
+    await connectMqtt(config);
+    await disconnectMqtt();
+    await startMidi(config);
+    await stopMidi();
     await expect(listenBridgeLogs(onLog)).resolves.toBe(unlisten);
 
-    expect(tauriBridge.startBridge).toHaveBeenCalledWith(config);
-    expect(tauriBridge.stopBridge).toHaveBeenCalledOnce();
+    expect(tauriBridge.connectMqtt).toHaveBeenCalledWith(config);
+    expect(tauriBridge.disconnectMqtt).toHaveBeenCalledOnce();
+    expect(tauriBridge.startMidi).toHaveBeenCalledWith(config);
+    expect(tauriBridge.stopMidi).toHaveBeenCalledOnce();
     expect(tauriBridge.listenBridgeLogs).toHaveBeenCalledWith(onLog);
-    expect(webBridge.startBridge).not.toHaveBeenCalled();
+    expect(webBridge.connectMqtt).not.toHaveBeenCalled();
   });
 
   it("routes bridge operations to the web implementation", async () => {

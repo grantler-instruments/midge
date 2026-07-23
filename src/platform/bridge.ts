@@ -19,21 +19,39 @@ export async function getBridgeStatus(): Promise<BridgeStatus> {
   return getStatus();
 }
 
-export async function startBridge(config: BridgeConfig): Promise<void> {
+export async function connectMqtt(config: BridgeConfig): Promise<void> {
   if (getPlatform() === "tauri") {
-    const { startBridge: start } = await import("./bridge.tauri");
+    const { connectMqtt: connect } = await import("./bridge.tauri");
+    return connect(config);
+  }
+  const { connectMqtt: connect } = await import("./bridge.web");
+  return connect(config);
+}
+
+export async function disconnectMqtt(): Promise<void> {
+  if (getPlatform() === "tauri") {
+    const { disconnectMqtt: disconnect } = await import("./bridge.tauri");
+    return disconnect();
+  }
+  const { disconnectMqtt: disconnect } = await import("./bridge.web");
+  return disconnect();
+}
+
+export async function startMidi(config: BridgeConfig): Promise<void> {
+  if (getPlatform() === "tauri") {
+    const { startMidi: start } = await import("./bridge.tauri");
     return start(config);
   }
-  const { startBridge: start } = await import("./bridge.web");
+  const { startMidi: start } = await import("./bridge.web");
   return start(config);
 }
 
-export async function stopBridge(): Promise<void> {
+export async function stopMidi(): Promise<void> {
   if (getPlatform() === "tauri") {
-    const { stopBridge: stop } = await import("./bridge.tauri");
+    const { stopMidi: stop } = await import("./bridge.tauri");
     return stop();
   }
-  const { stopBridge: stop } = await import("./bridge.web");
+  const { stopMidi: stop } = await import("./bridge.web");
   return stop();
 }
 

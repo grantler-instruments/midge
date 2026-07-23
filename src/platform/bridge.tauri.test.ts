@@ -10,11 +10,13 @@ vi.mock("@tauri-apps/api/event", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
+  connectMqtt,
+  disconnectMqtt,
   getBridgeStatus,
   listenBridgeLogs,
   listMidiPortNames,
-  startBridge,
-  stopBridge,
+  startMidi,
+  stopMidi,
 } from "./bridge.tauri";
 
 describe("Tauri bridge", () => {
@@ -26,19 +28,24 @@ describe("Tauri bridge", () => {
   it("invokes native bridge commands", async () => {
     vi.mocked(invoke)
       .mockResolvedValueOnce({ inputs: ["in"], outputs: ["out"] })
-      .mockResolvedValueOnce({ running: true })
+      .mockResolvedValueOnce({ mqttConnected: true, midiListening: false })
+      .mockResolvedValue(undefined)
       .mockResolvedValue(undefined);
     const config = { url: "mqtt://localhost:1883", prefix: "remote" };
 
     await expect(listMidiPortNames()).resolves.toEqual({ inputs: ["in"], outputs: ["out"] });
-    await expect(getBridgeStatus()).resolves.toEqual({ running: true });
-    await startBridge(config);
-    await stopBridge();
+    await expect(getBridgeStatus()).resolves.toEqual({ mqttConnected: true, midiListening: false });
+    await connectMqtt(config);
+    await disconnectMqtt();
+    await startMidi(config);
+    await stopMidi();
 
     expect(invoke).toHaveBeenNthCalledWith(1, "list_midi_port_names");
     expect(invoke).toHaveBeenNthCalledWith(2, "get_bridge_status");
-    expect(invoke).toHaveBeenNthCalledWith(3, "start_bridge", { config });
-    expect(invoke).toHaveBeenNthCalledWith(4, "stop_bridge");
+    expect(invoke).toHaveBeenNthCalledWith(3, "connect_mqtt", { config });
+    expect(invoke).toHaveBeenNthCalledWith(4, "disconnect_mqtt");
+    expect(invoke).toHaveBeenNthCalledWith(5, "start_midi", { config });
+    expect(invoke).toHaveBeenNthCalledWith(6, "stop_midi");
   });
 
   it("forwards log payloads and only unregisters once", async () => {

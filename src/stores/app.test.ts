@@ -19,7 +19,8 @@ const initialState = {
   password: "",
   clientId: "",
   useNamedPorts: false,
-  bridgeRunning: false,
+  mqttConnected: false,
+  midiListening: false,
   logEntries: [],
 };
 
@@ -34,13 +35,15 @@ describe("app store", () => {
     store.setDarkMode(false);
     store.setUrl("mqtt://broker.example:1883");
     store.setVirtualPort("Midge MIDI");
-    store.setBridgeRunning(true);
+    store.setMqttConnected(true);
+    store.setMidiListening(true);
 
     expect(useAppStore.getState()).toMatchObject({
       darkMode: false,
       url: "mqtt://broker.example:1883",
       virtualPort: "Midge MIDI",
-      bridgeRunning: true,
+      mqttConnected: true,
+      midiListening: true,
     });
   });
 

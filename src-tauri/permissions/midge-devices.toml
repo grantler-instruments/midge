@@ -4,6 +4,8 @@ description = "Run the MQTT↔MIDI bridge and list MIDI ports"
 commands.allow = [
   "list_midi_port_names",
   "get_bridge_status",
-  "start_bridge",
-  "stop_bridge",
+  "connect_mqtt",
+  "disconnect_mqtt",
+  "start_midi",
+  "stop_midi",
 ]

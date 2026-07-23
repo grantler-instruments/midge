@@ -1,5 +1,5 @@
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
 #[cfg(unix)]
@@ -38,7 +38,8 @@ pub struct BridgeConfig {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgeStatus {
-    pub running: bool,
+    pub mqtt_connected: bool,
+    pub midi_listening: bool,
     pub url: Option<String>,
     pub prefix: Option<String>,
     pub midi_in: Option<String>,
@@ -52,34 +53,56 @@ pub struct BridgeLogEntry {
     pub detail: String,
 }
 
-struct ResolvedBridgeConfig {
+struct ResolvedMqttConfig {
     url: String,
     host: String,
     port: u16,
     use_tls: bool,
     prefix: String,
-    midi_in: String,
-    midi_out: String,
-    use_virtual: bool,
     username: Option<String>,
     password: Option<String>,
     client_id: String,
 }
 
-struct BridgeHandle {
+struct ResolvedMidiConfig {
+    midi_in: String,
+    midi_out: String,
+    use_virtual: bool,
+}
+
+type MidiOutputSender = Sender<Vec<u8>>;
+type MqttPublishSender = Sender<(String, Vec<u8>)>;
+
+struct MqttHandle {
     stop_tx: oneshot::Sender<()>,
     mqtt_task: TokioJoinHandle<()>,
+    config: ResolvedMqttConfig,
+}
+
+struct MidiHandle {
     midi_out_thread: JoinHandle<()>,
     midi_forward_thread: JoinHandle<()>,
     _midi_in: MidiInputConnection<()>,
-    config: ResolvedBridgeConfig,
+    config: ResolvedMidiConfig,
 }
 
-pub struct BridgeState(Mutex<Option<BridgeHandle>>);
+struct BridgeStateInner {
+    mqtt: Option<MqttHandle>,
+    midi: Option<MidiHandle>,
+    midi_out_tx: Arc<Mutex<Option<MidiOutputSender>>>,
+    mqtt_publish_tx: Arc<Mutex<Option<MqttPublishSender>>>,
+}
+
+pub struct BridgeState(Mutex<BridgeStateInner>);
 
 impl Default for BridgeState {
     fn default() -> Self {
-        Self(Mutex::new(None))
+        Self(Mutex::new(BridgeStateInner {
+            mqtt: None,
+            midi: None,
+            midi_out_tx: Arc::new(Mutex::new(None)),
+            mqtt_publish_tx: Arc::new(Mutex::new(None)),
+        }))
     }
 }
 
@@ -91,64 +114,33 @@ pub fn list_midi_port_names() -> PortLists {
 #[tauri::command]
 pub fn get_bridge_status(state: State<'_, BridgeState>) -> BridgeStatus {
     let guard = state.0.lock().ok();
-    if let Some(handle) = guard.as_ref().and_then(|inner| inner.as_ref()) {
-        BridgeStatus {
-            running: true,
-            url: Some(handle.config.url.clone()),
-            prefix: Some(handle.config.prefix.clone()),
-            midi_in: Some(handle.config.midi_in.clone()),
-            midi_out: Some(handle.config.midi_out.clone()),
-            virtual_port: handle
+    let inner = guard.as_ref();
+    let mqtt = inner.and_then(|inner| inner.mqtt.as_ref());
+    let midi = inner.and_then(|inner| inner.midi.as_ref());
+    BridgeStatus {
+        mqtt_connected: mqtt.is_some(),
+        midi_listening: midi.is_some(),
+        url: mqtt.map(|handle| handle.config.url.clone()),
+        prefix: mqtt.map(|handle| handle.config.prefix.clone()),
+        midi_in: midi.map(|handle| handle.config.midi_in.clone()),
+        midi_out: midi.map(|handle| handle.config.midi_out.clone()),
+        virtual_port: midi.and_then(|handle| {
+            handle
                 .config
                 .use_virtual
-                .then(|| handle.config.midi_in.clone()),
-        }
-    } else {
-        BridgeStatus {
-            running: false,
-            url: None,
-            prefix: None,
-            midi_in: None,
-            midi_out: None,
-            virtual_port: None,
-        }
+                .then(|| handle.config.midi_in.clone())
+        }),
     }
 }
 
 #[tauri::command]
-pub async fn start_bridge(
+pub async fn connect_mqtt(
     app: AppHandle,
     state: State<'_, BridgeState>,
     config: BridgeConfig,
 ) -> Result<(), String> {
-    stop_bridge_inner(&state).await?;
-
-    let resolved = resolve_bridge_config(config)?;
-    let midi_out_conn = open_midi_output(&resolved)?;
-    let (midi_out_tx, midi_out_rx) = mpsc::channel();
-    let midi_out_thread = spawn_midi_out_thread(midi_out_conn, midi_out_rx);
-
-    let (mqtt_publish_tx, mqtt_publish_rx) = mpsc::channel();
-    let (raw_midi_tx, raw_midi_rx) = mpsc::channel();
-    let prefix = resolved.prefix.clone();
-    let app_for_midi = app.clone();
-    let midi_in_label = resolved.midi_in.clone();
-    let midi_in_conn = open_midi_input(&resolved, raw_midi_tx)?;
-    let midi_forward_thread = thread::spawn(move || {
-        while let Ok(message) = raw_midi_rx.recv() {
-            if let Some((topic, payload)) = mqtt_payload_from_midi(&prefix, &message) {
-                let detail = format!("{} ({} bytes)", topic, payload.len());
-                let _ = mqtt_publish_tx.send((topic, payload));
-                let _ = app_for_midi.emit(
-                    "bridge://log",
-                    BridgeLogEntry {
-                        direction: "midi→mqtt".to_string(),
-                        detail,
-                    },
-                );
-            }
-        }
-    });
+    stop_mqtt_inner(&state).await?;
+    let resolved = resolve_mqtt_config(config)?;
 
     let mut mqtt_options = MqttOptions::new(
         resolved.client_id.clone(),
@@ -172,6 +164,20 @@ pub async fn start_bridge(
     }
 
     let (stop_tx, stop_rx) = oneshot::channel();
+    let (mqtt_publish_tx, mqtt_publish_rx) = mpsc::channel();
+    let midi_out_tx = state
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .midi_out_tx
+        .clone();
+    let mqtt_publish_tx_slot = state
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .mqtt_publish_tx
+        .clone();
+    *mqtt_publish_tx_slot.lock().map_err(|e| e.to_string())? = Some(mqtt_publish_tx);
     let app_for_mqtt = app.clone();
     let prefix_for_mqtt = resolved.prefix.clone();
     let mqtt_task = tokio::spawn(async move {
@@ -191,20 +197,13 @@ pub async fn start_bridge(
         "bridge://log",
         BridgeLogEntry {
             direction: "status".to_string(),
-            detail: format!(
-                "Bridge started ({}{})",
-                if resolved.use_virtual { "virtual " } else { "" },
-                midi_in_label
-            ),
+            detail: "MQTT connected".to_string(),
         },
     );
 
-    *state.0.lock().map_err(|e| e.to_string())? = Some(BridgeHandle {
+    state.0.lock().map_err(|e| e.to_string())?.mqtt = Some(MqttHandle {
         stop_tx,
         mqtt_task,
-        midi_out_thread,
-        midi_forward_thread,
-        _midi_in: midi_in_conn,
         config: resolved,
     });
 
@@ -212,25 +211,141 @@ pub async fn start_bridge(
 }
 
 #[tauri::command]
-pub async fn stop_bridge(state: State<'_, BridgeState>) -> Result<(), String> {
-    stop_bridge_inner(&state).await
+pub async fn disconnect_mqtt(state: State<'_, BridgeState>) -> Result<(), String> {
+    stop_mqtt_inner(&state).await
 }
 
-async fn stop_bridge_inner(state: &State<'_, BridgeState>) -> Result<(), String> {
-    let handle = state.0.lock().map_err(|e| e.to_string())?.take();
+#[tauri::command]
+pub async fn start_midi(
+    app: AppHandle,
+    state: State<'_, BridgeState>,
+    config: BridgeConfig,
+) -> Result<(), String> {
+    stop_midi_inner(&state).await?;
+    let configured_prefix = config.prefix.clone();
+    let resolved = resolve_midi_config(config)?;
+    let midi_out_conn = open_midi_output(&resolved)?;
+    let (midi_out_tx, midi_out_rx) = mpsc::channel();
+    let (raw_midi_tx, raw_midi_rx) = mpsc::channel::<Vec<u8>>();
+    let mqtt_publish_tx = state
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .mqtt_publish_tx
+        .clone();
+    let prefix = state
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .mqtt
+        .as_ref()
+        .map(|handle| handle.config.prefix.clone())
+        .unwrap_or(configured_prefix);
+    let app_for_midi = app.clone();
+    let midi_forward_thread = thread::spawn(move || {
+        while let Ok(message) = raw_midi_rx.recv() {
+            if let Some((topic, payload)) = mqtt_payload_from_midi(&prefix, &message) {
+                let detail = format!("{} ({} bytes)", topic, payload.len());
+                if let Ok(slot) = mqtt_publish_tx.lock() {
+                    if let Some(sender) = slot.as_ref() {
+                        let _ = sender.send((topic, payload));
+                    }
+                }
+                let _ = app_for_midi.emit(
+                    "bridge://log",
+                    BridgeLogEntry {
+                        direction: "midi→mqtt".to_string(),
+                        detail,
+                    },
+                );
+            }
+        }
+    });
+    let midi_in_conn = open_midi_input(&resolved, raw_midi_tx)?;
+    let midi_out_thread = spawn_midi_out_thread(midi_out_conn, midi_out_rx);
+    let midi_out_tx_slot = state
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .midi_out_tx
+        .clone();
+    *midi_out_tx_slot.lock().map_err(|e| e.to_string())? = Some(midi_out_tx);
+    let midi_in_label = resolved.midi_in.clone();
+    state.0.lock().map_err(|e| e.to_string())?.midi = Some(MidiHandle {
+        midi_out_thread,
+        midi_forward_thread,
+        _midi_in: midi_in_conn,
+        config: resolved,
+    });
+    let _ = app.emit(
+        "bridge://log",
+        BridgeLogEntry {
+            direction: "status".to_string(),
+            detail: format!("MIDI listening ({midi_in_label})"),
+        },
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn stop_midi(app: AppHandle, state: State<'_, BridgeState>) -> Result<(), String> {
+    stop_midi_inner(&state).await?;
+    let _ = app.emit(
+        "bridge://log",
+        BridgeLogEntry {
+            direction: "status".to_string(),
+            detail: "MIDI stopped".to_string(),
+        },
+    );
+    Ok(())
+}
+
+async fn stop_mqtt_inner(state: &State<'_, BridgeState>) -> Result<(), String> {
+    let (handle, publish_tx) = {
+        let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+        let publish_tx = guard.mqtt_publish_tx.clone();
+        (guard.mqtt.take(), publish_tx)
+    };
     if let Some(handle) = handle {
+        *publish_tx.lock().map_err(|e| e.to_string())? = None;
         let _ = handle.stop_tx.send(());
         let _ = handle.mqtt_task.await;
-        let _ = handle.midi_out_thread.join();
-        let _ = handle.midi_forward_thread.join();
+    }
+    Ok(())
+}
+
+async fn stop_midi_inner(state: &State<'_, BridgeState>) -> Result<(), String> {
+    let (handle, midi_out_tx) = {
+        let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+        let midi_out_tx = guard.midi_out_tx.clone();
+        (guard.midi.take(), midi_out_tx)
+    };
+    if let Some(handle) = handle {
+        *midi_out_tx.lock().map_err(|e| e.to_string())? = None;
+        let MidiHandle {
+            midi_out_thread,
+            midi_forward_thread,
+            _midi_in,
+            ..
+        } = handle;
+        drop(_midi_in);
+        let _ = midi_out_thread.join();
+        let _ = midi_forward_thread.join();
     }
     Ok(())
 }
 
 pub fn shutdown_on_exit(state: &BridgeState) {
     if let Ok(mut guard) = state.0.lock() {
-        if let Some(handle) = guard.take() {
+        if let Some(handle) = guard.mqtt.take() {
             let _ = handle.stop_tx.send(());
+        }
+        guard.midi.take();
+        if let Ok(mut sender) = guard.mqtt_publish_tx.lock() {
+            *sender = None;
+        }
+        if let Ok(mut sender) = guard.midi_out_tx.lock() {
+            *sender = None;
         }
     }
 }
@@ -239,7 +354,7 @@ fn supports_virtual_midi_ports() -> bool {
     cfg!(any(target_os = "macos", target_os = "linux"))
 }
 
-fn resolve_bridge_config(config: BridgeConfig) -> Result<ResolvedBridgeConfig, String> {
+fn resolve_mqtt_config(config: BridgeConfig) -> Result<ResolvedMqttConfig, String> {
     if config.url.trim().is_empty() {
         return Err("url is required".to_string());
     }
@@ -249,6 +364,25 @@ fn resolve_bridge_config(config: BridgeConfig) -> Result<ResolvedBridgeConfig, S
     if config.prefix.contains('+') || config.prefix.contains('#') {
         return Err("prefix must not contain MQTT wildcards".to_string());
     }
+    let (host, port, use_tls) = parse_mqtt_url(&config.url)?;
+    let client_id = config
+        .client_id
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| format!("midge-bridge-{}", uuid_suffix()));
+
+    Ok(ResolvedMqttConfig {
+        url: config.url,
+        host,
+        port,
+        use_tls,
+        prefix: config.prefix,
+        username: config.username,
+        password: config.password,
+        client_id,
+    })
+}
+
+fn resolve_midi_config(config: BridgeConfig) -> Result<ResolvedMidiConfig, String> {
     if config.r#virtual.is_some() && (config.midi_in.is_some() || config.midi_out.is_some()) {
         return Err("use either virtual or midiIn/midiOut, not both".to_string());
     }
@@ -256,14 +390,8 @@ fn resolve_bridge_config(config: BridgeConfig) -> Result<ResolvedBridgeConfig, S
         return Err("midiIn and midiOut must both be set when using named ports".to_string());
     }
 
-    let (host, port, use_tls) = parse_mqtt_url(&config.url)?;
-    let client_id = config
-        .client_id
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| format!("midge-bridge-{}", uuid_suffix()));
-
     let (midi_in, midi_out, use_virtual) =
-        if let Some(name) = config.r#virtual.filter(|v| !v.is_empty()) {
+        if let Some(name) = config.r#virtual.filter(|value| !value.is_empty()) {
             (name.clone(), name, true)
         } else if let (Some(midi_in), Some(midi_out)) = (config.midi_in, config.midi_out) {
             (midi_in, midi_out, false)
@@ -284,18 +412,10 @@ fn resolve_bridge_config(config: BridgeConfig) -> Result<ResolvedBridgeConfig, S
             );
         };
 
-    Ok(ResolvedBridgeConfig {
-        url: config.url,
-        host,
-        port,
-        use_tls,
-        prefix: config.prefix,
+    Ok(ResolvedMidiConfig {
         midi_in,
         midi_out,
         use_virtual,
-        username: config.username,
-        password: config.password,
-        client_id,
     })
 }
 
@@ -334,7 +454,7 @@ fn uuid_suffix() -> String {
     format!("{nanos:x}")
 }
 
-fn open_midi_output(config: &ResolvedBridgeConfig) -> Result<MidiOutputConnection, String> {
+fn open_midi_output(config: &ResolvedMidiConfig) -> Result<MidiOutputConnection, String> {
     if config.use_virtual {
         #[cfg(unix)]
         {
@@ -360,7 +480,7 @@ fn open_midi_output(config: &ResolvedBridgeConfig) -> Result<MidiOutputConnectio
 }
 
 fn open_midi_input(
-    config: &ResolvedBridgeConfig,
+    config: &ResolvedMidiConfig,
     raw_midi_tx: Sender<Vec<u8>>,
 ) -> Result<MidiInputConnection<()>, String> {
     if config.use_virtual {
@@ -421,7 +541,7 @@ async fn run_mqtt_loop(
     mut eventloop: EventLoop,
     client: AsyncClient,
     prefix: String,
-    midi_out_tx: Sender<Vec<u8>>,
+    midi_out_tx: Arc<Mutex<Option<MidiOutputSender>>>,
     mqtt_publish_rx: Receiver<(String, Vec<u8>)>,
     mut stop_rx: oneshot::Receiver<()>,
 ) {
@@ -477,7 +597,7 @@ async fn run_mqtt_loop(
         "bridge://log",
         BridgeLogEntry {
             direction: "status".to_string(),
-            detail: "Bridge stopped".to_string(),
+            detail: "MQTT disconnected".to_string(),
         },
     );
 }
@@ -487,7 +607,7 @@ fn handle_mqtt_publish(
     prefix: &str,
     topic: &str,
     payload: &[u8],
-    midi_out_tx: &Sender<Vec<u8>>,
+    midi_out_tx: &Arc<Mutex<Option<MidiOutputSender>>>,
 ) -> Result<(), String> {
     let parsed = parse_topic(prefix, topic).ok_or_else(|| format!("ignored topic: {topic}"))?;
     if !matches!(
@@ -518,7 +638,12 @@ fn handle_mqtt_publish(
     }
 
     let bytes = mqtt_to_midi_bytes(&parsed, payload)?;
-    midi_out_tx
+    let sender = midi_out_tx
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone()
+        .ok_or_else(|| "MIDI is not listening".to_string())?;
+    sender
         .send(bytes)
         .map_err(|_| "MIDI output thread stopped".to_string())?;
     let _ = app.emit(

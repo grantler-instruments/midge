@@ -15,7 +15,8 @@ export interface BridgeConfig {
 }
 
 export interface BridgeStatus {
-  running: boolean;
+  mqttConnected: boolean;
+  midiListening: boolean;
   url?: string | null;
   prefix?: string | null;
   midiIn?: string | null;

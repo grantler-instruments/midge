@@ -4,21 +4,29 @@ import { useAppStore } from "../stores/app";
 
 export function useBridgeRuntime() {
   const pushLogEntry = useAppStore((s) => s.pushLogEntry);
-  const setBridgeRunning = useAppStore((s) => s.setBridgeRunning);
+  const setMqttConnected = useAppStore((s) => s.setMqttConnected);
+  const setMidiListening = useAppStore((s) => s.setMidiListening);
 
   useEffect(() => {
-    void getBridgeStatus().then((status) => setBridgeRunning(status.running));
-  }, [setBridgeRunning]);
+    void getBridgeStatus().then((status) => {
+      setMqttConnected(status.mqttConnected);
+      setMidiListening(status.midiListening);
+    });
+  }, [setMidiListening, setMqttConnected]);
 
   useEffect(() => {
     let stopListening: (() => void) | undefined;
     void listenBridgeLogs((entry) => {
       pushLogEntry(entry);
       if (entry.direction === "status") {
-        if (entry.detail === "Bridge stopped") {
-          setBridgeRunning(false);
-        } else if (entry.detail.startsWith("Bridge started")) {
-          setBridgeRunning(true);
+        if (entry.detail === "MQTT disconnected") {
+          setMqttConnected(false);
+        } else if (entry.detail === "MQTT connected") {
+          setMqttConnected(true);
+        } else if (entry.detail === "MIDI stopped") {
+          setMidiListening(false);
+        } else if (entry.detail.startsWith("MIDI listening")) {
+          setMidiListening(true);
         }
       }
     }).then((stop) => {
@@ -27,7 +35,7 @@ export function useBridgeRuntime() {
     return () => {
       stopListening?.();
     };
-  }, [pushLogEntry, setBridgeRunning]);
+  }, [pushLogEntry, setMidiListening, setMqttConnected]);
 }
 
 export function useMidiPortNames() {

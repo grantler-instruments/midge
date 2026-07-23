@@ -10,12 +10,20 @@ export async function getBridgeStatus(): Promise<BridgeStatus> {
   return invoke<BridgeStatus>("get_bridge_status");
 }
 
-export async function startBridge(config: BridgeConfig): Promise<void> {
-  await invoke("start_bridge", { config });
+export async function connectMqtt(config: BridgeConfig): Promise<void> {
+  await invoke("connect_mqtt", { config });
 }
 
-export async function stopBridge(): Promise<void> {
-  await invoke("stop_bridge");
+export async function disconnectMqtt(): Promise<void> {
+  await invoke("disconnect_mqtt");
+}
+
+export async function startMidi(config: BridgeConfig): Promise<void> {
+  await invoke("start_midi", { config });
+}
+
+export async function stopMidi(): Promise<void> {
+  await invoke("stop_midi");
 }
 
 export async function listenBridgeLogs(
