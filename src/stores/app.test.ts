@@ -49,13 +49,18 @@ describe("app store", () => {
 
   it("prepends log entries and retains the latest 200", () => {
     const store = useAppStore.getState();
+    vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
     for (let index = 0; index < 201; index += 1) {
       store.pushLogEntry({ direction: "in", detail: String(index) });
     }
 
     const { logEntries } = useAppStore.getState();
     expect(logEntries).toHaveLength(200);
-    expect(logEntries[0]).toMatchObject({ direction: "in", detail: "200" });
+    expect(logEntries[0]).toMatchObject({
+      direction: "in",
+      detail: "200",
+      timestamp: 1_700_000_000_000,
+    });
     expect(logEntries[logEntries.length - 1]).toMatchObject({ direction: "in", detail: "1" });
     expect(new Set(logEntries.map((entry) => entry.id))).toHaveLength(200);
 

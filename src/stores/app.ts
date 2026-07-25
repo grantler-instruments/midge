@@ -16,7 +16,7 @@ interface AppState {
   useNamedPorts: boolean;
   mqttConnected: boolean;
   midiListening: boolean;
-  logEntries: Array<BridgeLogEntry & { id: number }>;
+  logEntries: Array<BridgeLogEntry & { id: number; timestamp: number }>;
   setDarkMode: (darkMode: boolean) => void;
   setUrl: (url: string) => void;
   setPrefix: (prefix: string) => void;
@@ -67,10 +67,10 @@ export const useAppStore = create<AppState>()(
         setMidiListening: (midiListening) => set({ midiListening }),
         pushLogEntry: (entry) =>
           set((s) => ({
-            logEntries: [{ ...entry, id: nextLogEntryId++ }, ...s.logEntries].slice(
-              0,
-              MAX_LOG_ENTRIES,
-            ),
+            logEntries: [
+              { ...entry, id: nextLogEntryId++, timestamp: Date.now() },
+              ...s.logEntries,
+            ].slice(0, MAX_LOG_ENTRIES),
           })),
         clearLogs: () => set({ logEntries: [] }),
       }),

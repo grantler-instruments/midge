@@ -29,6 +29,14 @@ function ChevronDownIcon() {
   );
 }
 
+function formatLogTimestamp(timestamp: number) {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 function App() {
   useBridgeRuntime();
   const { inputs, outputs } = useMidiPortNames();
@@ -61,6 +69,15 @@ function App() {
 
   const [isChangingMqttState, setIsChangingMqttState] = useState(false);
   const [isChangingMidiState, setIsChangingMidiState] = useState(false);
+  const [mqttExpanded, setMqttExpanded] = useState(true);
+  const [midiExpanded, setMidiExpanded] = useState(true);
+
+  const mqttSummary = [url, prefix].filter(Boolean).join(" · ");
+  const midiSummary = useNamedPorts
+    ? [midiIn && `In: ${midiIn}`, midiOut && `Out: ${midiOut}`].filter(Boolean).join(" · ")
+    : virtualPort
+      ? `Virtual: ${virtualPort}`
+      : "";
 
   const bridgeConfig = {
     url,
@@ -165,14 +182,21 @@ function App() {
             />
           </Box>
 
-          <Accordion defaultExpanded>
+          <Accordion expanded={mqttExpanded} onChange={(_, expanded) => setMqttExpanded(expanded)}>
             <AccordionSummary expandIcon={<ChevronDownIcon />}>
               <Stack
                 direction="row"
                 sx={{ justifyContent: "space-between", alignItems: "center", width: "100%", mr: 1 }}
               >
-                <Typography variant="h6">MQTT</Typography>
-                <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1, mr: 2 }}>
+                  <Typography variant="h6">MQTT</Typography>
+                  {!mqttExpanded && mqttSummary && (
+                    <Typography variant="body2" color="text.secondary" noWrap>
+                      {mqttSummary}
+                    </Typography>
+                  )}
+                </Stack>
+                <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexShrink: 0 }}>
                   <Typography variant="body2" color="text.secondary">
                     Connect
                   </Typography>
@@ -195,14 +219,35 @@ function App() {
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   fullWidth
+                  disabled={mqttConnected}
                   placeholder="mqtt://127.0.0.1:1883"
+                  slotProps={{
+                    htmlInput: {
+                      autoCapitalize: "off",
+                      autoCorrect: "off",
+                      spellCheck: false,
+                    },
+                  }}
                 />
                 <TextField
                   label="Topic prefix"
                   value={prefix}
                   onChange={(e) => setPrefix(e.target.value)}
                   fullWidth
-                  helperText="Web apps use MqttMidi({ prefix }). Bridge subscribes to {prefix}/in/… and publishes {prefix}/out/…"
+                  disabled={mqttConnected}
+                  helperText={
+                    mqttConnected
+                      ? "Disconnect to change broker settings. Active prefix is shown in the activity log."
+                      : "Web apps use MqttMidi({ prefix }). Bridge subscribes to {prefix}/in/… and publishes {prefix}/out/…"
+                  }
+                  slotProps={{
+                    htmlInput: {
+                      autoCapitalize: "off",
+                      autoCorrect: "off",
+                      spellCheck: false,
+                      style: { textTransform: "none" },
+                    },
+                  }}
                 />
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                   <TextField
@@ -210,6 +255,14 @@ function App() {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     fullWidth
+                    disabled={mqttConnected}
+                    slotProps={{
+                      htmlInput: {
+                        autoCapitalize: "off",
+                        autoCorrect: "off",
+                        spellCheck: false,
+                      },
+                    }}
                   />
                   <TextField
                     label="Password"
@@ -217,27 +270,44 @@ function App() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     fullWidth
+                    disabled={mqttConnected}
                   />
                   <TextField
                     label="Client ID"
                     value={clientId}
                     onChange={(e) => setClientId(e.target.value)}
                     fullWidth
+                    disabled={mqttConnected}
                     placeholder="auto"
+                    slotProps={{
+                      htmlInput: {
+                        autoCapitalize: "off",
+                        autoCorrect: "off",
+                        spellCheck: false,
+                        style: { textTransform: "none" },
+                      },
+                    }}
                   />
                 </Stack>
               </Stack>
             </AccordionDetails>
           </Accordion>
 
-          <Accordion defaultExpanded>
+          <Accordion expanded={midiExpanded} onChange={(_, expanded) => setMidiExpanded(expanded)}>
             <AccordionSummary expandIcon={<ChevronDownIcon />}>
               <Stack
                 direction="row"
                 sx={{ justifyContent: "space-between", alignItems: "center", width: "100%", mr: 1 }}
               >
-                <Typography variant="h6">MIDI</Typography>
-                <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1, mr: 2 }}>
+                  <Typography variant="h6">MIDI</Typography>
+                  {!midiExpanded && midiSummary && (
+                    <Typography variant="body2" color="text.secondary" noWrap>
+                      {midiSummary}
+                    </Typography>
+                  )}
+                </Stack>
+                <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexShrink: 0 }}>
                   <Typography variant="body2" color="text.secondary">
                     Listen
                   </Typography>
@@ -315,7 +385,22 @@ function App() {
 
           <Accordion defaultExpanded>
             <AccordionSummary expandIcon={<ChevronDownIcon />}>
-              <Typography variant="h6">Activity log</Typography>
+              <Stack
+                direction="row"
+                sx={{ justifyContent: "space-between", alignItems: "center", width: "100%", mr: 1 }}
+              >
+                <Typography variant="h6">Activity log</Typography>
+                <Button
+                  size="small"
+                  disabled={logEntries.length === 0}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    clearLogs();
+                  }}
+                >
+                  Clear
+                </Button>
+              </Stack>
             </AccordionSummary>
             <AccordionDetails>
               <Stack spacing={1}>
@@ -325,15 +410,19 @@ function App() {
                   </Typography>
                 )}
                 {logEntries.map((entry) => (
-                  <Typography key={entry.id} variant="body2" component="div">
-                    [{entry.direction}] {entry.detail}
-                  </Typography>
+                  <Stack key={entry.id} direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ fontVariantNumeric: "tabular-nums" }}
+                    >
+                      {formatLogTimestamp(entry.timestamp)}
+                    </Typography>
+                    <Typography variant="body2" component="div">
+                      [{entry.direction}] {entry.detail}
+                    </Typography>
+                  </Stack>
                 ))}
-                <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-                  <Button size="small" onClick={clearLogs}>
-                    Clear
-                  </Button>
-                </Box>
               </Stack>
             </AccordionDetails>
           </Accordion>

@@ -21,7 +21,7 @@ export function useBridgeRuntime() {
       if (entry.direction === "status") {
         if (entry.detail === "MQTT disconnected") {
           setMqttConnected(false);
-        } else if (entry.detail === "MQTT connected") {
+        } else if (entry.detail.startsWith("MQTT connected")) {
           setMqttConnected(true);
         } else if (entry.detail === "MIDI stopped") {
           setMidiListening(false);
