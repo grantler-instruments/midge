@@ -8,8 +8,9 @@ use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, QoS, Transport};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 use tokio::task::JoinHandle as TokioJoinHandle;
+use uuid::Uuid;
 
 use crate::devices::{find_input_port_index, find_output_port_index, PortLists};
 use crate::mqtt_midi::{
@@ -68,7 +69,7 @@ struct ResolvedMidiConfig {
 }
 
 type MidiOutputSender = Sender<Vec<u8>>;
-type MqttPublishSender = Sender<(String, Vec<u8>)>;
+type MqttPublishSender = tokio_mpsc::UnboundedSender<(String, Vec<u8>)>;
 
 struct MqttHandle {
     stop_tx: oneshot::Sender<()>,
@@ -88,6 +89,9 @@ struct BridgeStateInner {
     midi: Option<MidiHandle>,
     midi_out_tx: Arc<Mutex<Option<MidiOutputSender>>>,
     mqtt_publish_tx: Arc<Mutex<Option<MqttPublishSender>>>,
+    /// Shared with the MIDI→MQTT forwarder so reconnecting MQTT picks up a new prefix
+    /// without requiring MIDI to be restarted.
+    active_prefix: Arc<Mutex<String>>,
 }
 
 pub struct BridgeState(Mutex<BridgeStateInner>);
@@ -99,6 +103,7 @@ impl Default for BridgeState {
             midi: None,
             midi_out_tx: Arc::new(Mutex::new(None)),
             mqtt_publish_tx: Arc::new(Mutex::new(None)),
+            active_prefix: Arc::new(Mutex::new(String::new())),
         }))
     }
 }
@@ -161,7 +166,7 @@ pub async fn connect_mqtt(
     }
 
     let (stop_tx, stop_rx) = oneshot::channel();
-    let (mqtt_publish_tx, mqtt_publish_rx) = mpsc::channel();
+    let (mqtt_publish_tx, mqtt_publish_rx) = tokio_mpsc::unbounded_channel();
     let midi_out_tx = state
         .0
         .lock()
@@ -177,6 +182,10 @@ pub async fn connect_mqtt(
     *mqtt_publish_tx_slot.lock().map_err(|e| e.to_string())? = Some(mqtt_publish_tx);
     let app_for_mqtt = app.clone();
     let prefix_for_mqtt = resolved.prefix.clone();
+    {
+        let guard = state.0.lock().map_err(|e| e.to_string())?;
+        *guard.active_prefix.lock().map_err(|e| e.to_string())? = resolved.prefix.clone();
+    }
     let mqtt_task = tokio::spawn(async move {
         run_mqtt_loop(
             app_for_mqtt,
@@ -194,7 +203,10 @@ pub async fn connect_mqtt(
         "bridge://log",
         BridgeLogEntry {
             direction: "status".to_string(),
-            detail: "MQTT connected".to_string(),
+            detail: format!(
+                "MQTT connected (prefix {}, client ID {})",
+                resolved.prefix, resolved.client_id
+            ),
         },
     );
 
@@ -224,23 +236,23 @@ pub async fn start_midi(
     let midi_out_conn = open_midi_output(&resolved)?;
     let (midi_out_tx, midi_out_rx) = mpsc::channel();
     let (raw_midi_tx, raw_midi_rx) = mpsc::channel::<Vec<u8>>();
-    let mqtt_publish_tx = state
-        .0
-        .lock()
-        .map_err(|e| e.to_string())?
-        .mqtt_publish_tx
-        .clone();
-    let prefix = state
-        .0
-        .lock()
-        .map_err(|e| e.to_string())?
-        .mqtt
-        .as_ref()
-        .map(|handle| handle.config.prefix.clone())
-        .unwrap_or(configured_prefix);
+    let (mqtt_publish_tx, active_prefix) = {
+        let guard = state.0.lock().map_err(|e| e.to_string())?;
+        let prefix = guard
+            .mqtt
+            .as_ref()
+            .map(|handle| handle.config.prefix.clone())
+            .unwrap_or(configured_prefix);
+        *guard.active_prefix.lock().map_err(|e| e.to_string())? = prefix;
+        (guard.mqtt_publish_tx.clone(), guard.active_prefix.clone())
+    };
     let app_for_midi = app.clone();
     let midi_forward_thread = thread::spawn(move || {
         while let Ok(message) = raw_midi_rx.recv() {
+            let prefix = match active_prefix.lock() {
+                Ok(guard) => guard.clone(),
+                Err(_) => continue,
+            };
             if let Some((topic, payload)) = mqtt_payload_from_midi(&prefix, &message) {
                 let detail = format!("{} ({} bytes)", topic, payload.len());
                 if let Ok(slot) = mqtt_publish_tx.lock() {
@@ -259,7 +271,7 @@ pub async fn start_midi(
         }
     });
     let midi_in_conn = open_midi_input(&resolved, raw_midi_tx)?;
-    let midi_out_thread = spawn_midi_out_thread(midi_out_conn, midi_out_rx);
+    let midi_out_thread = spawn_midi_out_thread(app.clone(), midi_out_conn, midi_out_rx);
     let midi_out_tx_slot = state
         .0
         .lock()
@@ -365,7 +377,7 @@ fn resolve_mqtt_config(config: BridgeConfig) -> Result<ResolvedMqttConfig, Strin
     let client_id = config
         .client_id
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| format!("midge-bridge-{}", uuid_suffix()));
+        .unwrap_or_else(|| format!("midge-bridge-{}", Uuid::new_v4()));
 
     Ok(ResolvedMqttConfig {
         url: config.url,
@@ -442,15 +454,6 @@ fn parse_mqtt_url(url: &str) -> Result<(String, u16, bool), String> {
     }
 }
 
-fn uuid_suffix() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("{nanos:x}")
-}
-
 fn open_midi_output(config: &ResolvedMidiConfig) -> Result<MidiOutputConnection, String> {
     if config.use_virtual {
         #[cfg(unix)]
@@ -525,10 +528,22 @@ fn connect_midi_input(
         .map_err(|e| e.to_string())
 }
 
-fn spawn_midi_out_thread(mut conn: MidiOutputConnection, rx: Receiver<Vec<u8>>) -> JoinHandle<()> {
+fn spawn_midi_out_thread(
+    app: AppHandle,
+    mut conn: MidiOutputConnection,
+    rx: Receiver<Vec<u8>>,
+) -> JoinHandle<()> {
     thread::spawn(move || {
         while let Ok(message) = rx.recv() {
-            let _ = conn.send(&message);
+            if let Err(err) = conn.send(&message) {
+                let _ = app.emit(
+                    "bridge://log",
+                    BridgeLogEntry {
+                        direction: "error".to_string(),
+                        detail: format!("MIDI output failed: {err}"),
+                    },
+                );
+            }
         }
     })
 }
@@ -539,12 +554,29 @@ async fn run_mqtt_loop(
     client: AsyncClient,
     prefix: String,
     midi_out_tx: Arc<Mutex<Option<MidiOutputSender>>>,
-    mqtt_publish_rx: Receiver<(String, Vec<u8>)>,
+    mut mqtt_publish_rx: tokio_mpsc::UnboundedReceiver<(String, Vec<u8>)>,
     mut stop_rx: oneshot::Receiver<()>,
 ) {
     loop {
         tokio::select! {
             _ = &mut stop_rx => break,
+            outgoing = mqtt_publish_rx.recv() => {
+                let Some((topic, payload)) = outgoing else {
+                    break;
+                };
+                if let Err(err) = client
+                    .publish(topic.clone(), QoS::AtMostOnce, false, payload)
+                    .await
+                {
+                    let _ = app.emit(
+                        "bridge://log",
+                        BridgeLogEntry {
+                            direction: "error".to_string(),
+                            detail: format!("MQTT publish failed: {err}"),
+                        },
+                    );
+                }
+            }
             incoming = eventloop.poll() => {
                 match incoming {
                     Ok(Event::Incoming(Incoming::Publish(publish))) => {
@@ -570,21 +602,6 @@ async fn run_mqtt_loop(
                         break;
                     }
                 }
-            }
-        }
-
-        while let Ok((topic, payload)) = mqtt_publish_rx.try_recv() {
-            if let Err(err) = client
-                .publish(topic.clone(), QoS::AtMostOnce, false, payload)
-                .await
-            {
-                let _ = app.emit(
-                    "bridge://log",
-                    BridgeLogEntry {
-                        direction: "error".to_string(),
-                        detail: format!("MQTT publish failed: {err}"),
-                    },
-                );
             }
         }
     }

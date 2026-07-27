@@ -1,6 +1,7 @@
 import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
@@ -16,8 +17,9 @@ import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useBridgeRuntime, useMidiPortNames } from "./hooks/useBridgeRuntime";
+import { getPlatform } from "./platform";
 import { connectMqtt, disconnectMqtt, startMidi, stopMidi } from "./platform/bridge";
 import { useAppStore } from "./stores/app";
 
@@ -40,6 +42,7 @@ function formatLogTimestamp(timestamp: number) {
 function App() {
   useBridgeRuntime();
   const { inputs, outputs } = useMidiPortNames();
+  const isBrowserDemo = getPlatform() === "web";
 
   const url = useAppStore((s) => s.url);
   const prefix = useAppStore((s) => s.prefix);
@@ -72,8 +75,15 @@ function App() {
   const [mqttExpanded, setMqttExpanded] = useState(true);
   const [midiExpanded, setMidiExpanded] = useState(true);
 
+  useEffect(() => {
+    if (isBrowserDemo && !useNamedPorts) {
+      setUseNamedPorts(true);
+    }
+  }, [isBrowserDemo, setUseNamedPorts, useNamedPorts]);
+
+  const namedPorts = isBrowserDemo || useNamedPorts;
   const mqttSummary = [url, prefix].filter(Boolean).join(" · ");
-  const midiSummary = useNamedPorts
+  const midiSummary = namedPorts
     ? [midiIn && `In: ${midiIn}`, midiOut && `Out: ${midiOut}`].filter(Boolean).join(" · ")
     : virtualPort
       ? `Virtual: ${virtualPort}`
@@ -82,9 +92,9 @@ function App() {
   const bridgeConfig = {
     url,
     prefix,
-    virtual: useNamedPorts ? null : virtualPort || null,
-    midiIn: useNamedPorts ? midiIn || null : null,
-    midiOut: useNamedPorts ? midiOut || null : null,
+    virtual: namedPorts ? null : virtualPort || null,
+    midiIn: namedPorts ? midiIn || null : null,
+    midiOut: namedPorts ? midiOut || null : null,
     username: username || null,
     password: password || null,
     clientId: clientId || null,
@@ -152,7 +162,9 @@ function App() {
             <Box>
               <Typography variant="h4">Midge</Typography>
               <Typography variant="body2" color="text.secondary">
-                Desktop MQTT↔MIDI bridge — connect your DAW and hardware over the network.
+                {isBrowserDemo
+                  ? "Browser demo of the MQTT↔MIDI bridge — try it with Web MIDI and a WebSocket MQTT broker."
+                  : "Desktop MQTT↔MIDI bridge — connect your DAW and hardware over the network."}{" "}
                 Compatible with{" "}
                 <Link
                   href="https://github.com/grantler-instruments/mqtt-midi"
@@ -181,6 +193,13 @@ function App() {
               sx={{ width: 64, height: 64, flexShrink: 0 }}
             />
           </Box>
+
+          {isBrowserDemo && (
+            <Alert severity="info">
+              Browser demo: use Chrome/Edge, allow MIDI access, and connect with a WebSocket broker
+              URL (ws:// or wss://). Virtual ports are desktop-only.
+            </Alert>
+          )}
 
           <Accordion expanded={mqttExpanded} onChange={(_, expanded) => setMqttExpanded(expanded)}>
             <AccordionSummary expandIcon={<ChevronDownIcon />}>
@@ -220,7 +239,12 @@ function App() {
                   onChange={(e) => setUrl(e.target.value)}
                   fullWidth
                   disabled={mqttConnected}
-                  placeholder="mqtt://127.0.0.1:1883"
+                  placeholder={isBrowserDemo ? "ws://127.0.0.1:9001" : "mqtt://127.0.0.1:1883"}
+                  helperText={
+                    isBrowserDemo
+                      ? "Browsers need MQTT over WebSockets (ws:// or wss://). mqtt:// is rewritten to ws:// with the same host/port."
+                      : undefined
+                  }
                   slotProps={{
                     htmlInput: {
                       autoCapitalize: "off",
@@ -325,19 +349,21 @@ function App() {
             </AccordionSummary>
             <AccordionDetails>
               <Stack spacing={2}>
-                <ToggleButtonGroup
-                  exclusive
-                  fullWidth
-                  color="primary"
-                  value={useNamedPorts ? "named" : "virtual"}
-                  onChange={(_, value) => {
-                    if (value) setUseNamedPorts(value === "named");
-                  }}
-                >
-                  <ToggleButton value="virtual">Create virtual port</ToggleButton>
-                  <ToggleButton value="named">Connect existing port</ToggleButton>
-                </ToggleButtonGroup>
-                {useNamedPorts ? (
+                {!isBrowserDemo && (
+                  <ToggleButtonGroup
+                    exclusive
+                    fullWidth
+                    color="primary"
+                    value={useNamedPorts ? "named" : "virtual"}
+                    onChange={(_, value) => {
+                      if (value) setUseNamedPorts(value === "named");
+                    }}
+                  >
+                    <ToggleButton value="virtual">Create virtual port</ToggleButton>
+                    <ToggleButton value="named">Connect existing port</ToggleButton>
+                  </ToggleButtonGroup>
+                )}
+                {namedPorts ? (
                   <>
                     <FormControl fullWidth>
                       <InputLabel id="midi-in-label">MIDI in</InputLabel>

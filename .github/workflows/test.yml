@@ -44,3 +44,26 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 14
+
+  # Deploy rebuilds site/ on main; keep this compile gate on pull requests only
+  # to avoid a duplicate build:pages run.
+  pages:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Install website dependencies
+        run: npm ci
+        working-directory: website
+
+      - name: Build Pages site (marketing)
+        run: npm run build:pages

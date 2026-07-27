@@ -1,5 +1,6 @@
 node_modules
 dist
+site
 coverage
 src-tauri/target
 .DS_Store

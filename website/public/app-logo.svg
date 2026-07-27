@@ -1,0 +1,75 @@
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <title>Midge logo</title>
+  <defs>
+    <linearGradient id="wingL" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d89cae"/>
+      <stop offset="100%" stop-color="#d89cae"/>
+    </linearGradient>
+    <linearGradient id="wingR" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#d89cae"/>
+      <stop offset="100%" stop-color="#d89cae"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#d89cae"/>
+      <stop offset="100%" stop-color="#d89cae"/>
+    </linearGradient>
+  </defs>
+
+  <!-- legs -->
+  <g stroke="#d89cae" stroke-width="3" stroke-linecap="round" opacity="0.85">
+    <line x1="182" y1="200" x2="130" y2="190"/>
+    <line x1="130" y1="190" x2="100" y2="170"/>
+    <line x1="187" y1="220" x2="140" y2="230"/>
+    <line x1="140" y1="230" x2="112" y2="255"/>
+    <line x1="192" y1="240" x2="150" y2="270"/>
+    <line x1="150" y1="270" x2="128" y2="300"/>
+
+    <line x1="218" y1="200" x2="270" y2="190"/>
+    <line x1="270" y1="190" x2="300" y2="170"/>
+    <line x1="213" y1="220" x2="260" y2="230"/>
+    <line x1="260" y1="230" x2="288" y2="255"/>
+    <line x1="208" y1="240" x2="250" y2="270"/>
+    <line x1="250" y1="270" x2="272" y2="300"/>
+  </g>
+
+  <!-- antennae -->
+  <g stroke="#d89cae" stroke-width="3" stroke-linecap="round" opacity="0.9">
+    <line x1="192" y1="118" x2="172" y2="80"/>
+    <line x1="208" y1="118" x2="228" y2="80"/>
+  </g>
+  <circle cx="172" cy="80" r="4" fill="#d89cae"/>
+  <circle cx="228" cy="80" r="4" fill="#d89cae"/>
+
+  <!-- left wing facets -->
+  <g opacity="0.92">
+    <polygon points="188,160 90,120 108,190" fill="url(#wingL)"/>
+    <polygon points="188,160 108,190 132,225" fill="#d89cae"/>
+    <polygon points="188,175 132,225 158,235" fill="#d89cae"/>
+    <polygon points="90,120 60,150 108,190" fill="#d89cae"/>
+  </g>
+
+  <!-- right wing facets -->
+  <g opacity="0.92">
+    <polygon points="212,160 310,120 292,190" fill="url(#wingR)"/>
+    <polygon points="212,160 292,190 268,225" fill="#d89cae"/>
+    <polygon points="212,175 268,225 242,235" fill="#d89cae"/>
+    <polygon points="310,120 340,150 292,190" fill="#d89cae"/>
+  </g>
+
+  <!-- body -->
+  <g>
+    <polygon points="200,110 214,124 210,142 190,142 186,124" fill="url(#body)"/>
+    <polygon points="200,138 224,158 216,192 184,192 176,158" fill="url(#body)"/>
+    <polygon points="200,188 220,206 214,230 186,230 180,206" fill="#d89cae"/>
+    <polygon points="200,226 214,240 210,262 190,262 186,240" fill="#d89cae"/>
+    <polygon points="200,258 208,270 205,288 195,288 192,270" fill="#d89cae"/>
+    <polygon points="200,285 204,296 200,308 196,296" fill="#d89cae"/>
+  </g>
+
+  <!-- facet seams on thorax -->
+  <g stroke="#d89cae" stroke-width="2" opacity="0.35">
+    <line x1="200" y1="138" x2="200" y2="192"/>
+    <line x1="176" y1="158" x2="200" y2="170"/>
+    <line x1="224" y1="158" x2="200" y2="170"/>
+  </g>
+</svg>

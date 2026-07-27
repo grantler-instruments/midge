@@ -17,8 +17,24 @@ Use the same `prefix` in web apps with `MqttMidi({ prefix: "remote", … })`.
 
 ```bash
 npm install
-npm run tauri:dev
+npm run tauri:dev   # desktop app (native MIDI + MQTT)
+npm run dev         # browser demo (Web MIDI + MQTT over WebSockets)
 ```
+
+In the browser, use Chrome/Edge, allow MIDI access, pick real Web MIDI ports, and connect with a `ws://` / `wss://` broker URL (`mqtt://` is rewritten to `ws://` with the same host/port). Virtual ports remain desktop-only.
+
+## Marketing site
+
+A landing page lives in [`website/`](./website) and is deployed to GitHub Pages at
+[grantler-instruments.github.io/midge](https://grantler-instruments.github.io/midge/).
+
+```bash
+npm run website:dev     # http://localhost:5175/midge/
+npm run build:pages     # builds website/ into site/ for GitHub Pages
+```
+
+Pushes to `main` deploy automatically via `.github/workflows/deploy.yml` (gated on CI).
+Enable it once under **Settings → Pages → Source: GitHub Actions**.
 
 ## Configuration
 
