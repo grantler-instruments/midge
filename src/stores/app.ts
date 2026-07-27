@@ -33,7 +33,7 @@ interface AppState {
   clearLogs: () => void;
 }
 
-const MAX_LOG_ENTRIES = 200;
+const MAX_LOG_ENTRIES = 100;
 let nextLogEntryId = 0;
 
 export const useAppStore = create<AppState>()(

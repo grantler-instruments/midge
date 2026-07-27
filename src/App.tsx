@@ -1,3 +1,5 @@
+import CallReceivedIcon from "@mui/icons-material/CallReceived";
+import SendIcon from "@mui/icons-material/Send";
 import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
@@ -16,8 +18,10 @@ import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
+import { version } from "../package.json";
 import { useBridgeRuntime, useMidiPortNames } from "./hooks/useBridgeRuntime";
 import { getPlatform } from "./platform";
 import { connectMqtt, disconnectMqtt, startMidi, stopMidi } from "./platform/bridge";
@@ -37,6 +41,37 @@ function formatLogTimestamp(timestamp: number) {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function LogDirectionIcon({ direction }: { direction: string }) {
+  if (direction === "mqtt→midi") {
+    return (
+      <Tooltip title="mqtt→midi">
+        <CallReceivedIcon fontSize="small" sx={{ color: "info.main", flexShrink: 0 }} />
+      </Tooltip>
+    );
+  }
+  if (direction === "midi→mqtt") {
+    return (
+      <Tooltip title="midi→mqtt">
+        <SendIcon fontSize="small" sx={{ color: "success.main", flexShrink: 0 }} />
+      </Tooltip>
+    );
+  }
+  return null;
+}
+
+function logDetailColor(direction: string): string {
+  switch (direction) {
+    case "mqtt→midi":
+      return "info.main";
+    case "midi→mqtt":
+      return "success.main";
+    case "error":
+      return "error.main";
+    default:
+      return "text.secondary";
+  }
 }
 
 function App() {
@@ -155,8 +190,8 @@ function App() {
   };
 
   return (
-    <Box sx={{ minHeight: "100vh", py: 4 }}>
-      <Container maxWidth="md">
+    <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <Container maxWidth="md" sx={{ flex: 1, py: 4 }}>
         <Stack spacing={3}>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <Box>
@@ -429,23 +464,37 @@ function App() {
               </Stack>
             </AccordionSummary>
             <AccordionDetails>
-              <Stack spacing={1}>
+              <Stack
+                spacing={1}
+                sx={{
+                  maxHeight: 280,
+                  overflow: "auto",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                }}
+              >
                 {logEntries.length === 0 && (
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" color="text.secondary" sx={{ fontFamily: "inherit" }}>
                     MQTT↔MIDI traffic and status messages appear here.
                   </Typography>
                 )}
                 {logEntries.map((entry) => (
-                  <Stack key={entry.id} direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
+                  <Stack key={entry.id} direction="row" spacing={1} sx={{ alignItems: "center" }}>
                     <Typography
                       variant="caption"
                       color="text.secondary"
-                      sx={{ fontVariantNumeric: "tabular-nums" }}
+                      sx={{ fontVariantNumeric: "tabular-nums", fontFamily: "inherit" }}
                     >
                       {formatLogTimestamp(entry.timestamp)}
                     </Typography>
-                    <Typography variant="body2" component="div">
-                      [{entry.direction}] {entry.detail}
+                    <LogDirectionIcon direction={entry.direction} />
+                    <Typography
+                      variant="body2"
+                      component="div"
+                      sx={{ fontFamily: "inherit", color: logDetailColor(entry.direction) }}
+                    >
+                      {entry.direction === "midi→mqtt" || entry.direction === "mqtt→midi"
+                        ? entry.detail
+                        : `[${entry.direction}] ${entry.detail}`}
                     </Typography>
                   </Stack>
                 ))}
@@ -454,6 +503,21 @@ function App() {
           </Accordion>
         </Stack>
       </Container>
+
+      <Box
+        component="footer"
+        sx={{
+          py: 2,
+          borderTop: 1,
+          borderColor: "divider",
+        }}
+      >
+        <Container maxWidth="md">
+          <Typography variant="body2" color="text.secondary">
+            © {new Date().getFullYear()} Grantler Instruments · AGPL-3.0 · v{version}
+          </Typography>
+        </Container>
+      </Box>
     </Box>
   );
 }

@@ -16,6 +16,7 @@ import {
   Typography,
 } from "@mui/material";
 import { Outlet, Link as RouterLink } from "react-router-dom";
+import { version } from "../package.json";
 import { GITHUB_RELEASES_URL, GITHUB_REPO_URL } from "./links";
 import { SupportDialog } from "./SupportDialog";
 import { useWebsiteStore } from "./store/useWebsiteStore";
@@ -146,7 +147,7 @@ export function SiteLayout() {
             }}
           >
             <Typography variant="body2" color="text.secondary">
-              © {new Date().getFullYear()} Grantler Instruments · AGPL-3.0
+              © {new Date().getFullYear()} Grantler Instruments · AGPL-3.0 · v{version}
             </Typography>
             <Stack direction="row" spacing={2} sx={{ flexWrap: "wrap" }}>
               <Link

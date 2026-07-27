@@ -7,6 +7,7 @@ export {
   encodeSevenBit,
   encodeSysexJson,
 } from "./codec";
+export { formatMidiToMqttDetail, formatMqttToMidiDetail, shouldLogTraffic } from "./logDetail";
 export { type ParsedMidiMessage, parseMidiMessage, toMidiBytes } from "./midiMessage";
 export { midiBytesFromMqtt, mqttPayloadFromMidi } from "./route";
 export {

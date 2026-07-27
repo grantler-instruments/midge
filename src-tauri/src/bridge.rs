@@ -14,8 +14,9 @@ use uuid::Uuid;
 
 use crate::devices::{find_input_port_index, find_output_port_index, PortLists};
 use crate::mqtt_midi::{
-    decode_pitch_bend, decode_seven_bit, decode_sysex_json, in_subscription_topics,
-    mqtt_payload_from_midi, parse_topic, to_midi_bytes, Direction, ParsedMidiMessage, ParsedTopic,
+    decode_pitch_bend, decode_seven_bit, decode_sysex_json, format_midi_to_mqtt_detail,
+    format_mqtt_to_midi_detail, in_subscription_topics, mqtt_payload_from_midi, parse_topic,
+    should_log_traffic, to_midi_bytes, Direction, ParsedMidiMessage, ParsedTopic,
 };
 
 pub const DEFAULT_VIRTUAL_PORT_NAME: &str = "midge";
@@ -254,19 +255,26 @@ pub async fn start_midi(
                 Err(_) => continue,
             };
             if let Some((topic, payload)) = mqtt_payload_from_midi(&prefix, &message) {
-                let detail = format!("{} ({} bytes)", topic, payload.len());
+                let should_log = should_log_traffic(&topic);
+                let detail = if should_log {
+                    Some(format_midi_to_mqtt_detail(&message, &topic, &payload))
+                } else {
+                    None
+                };
                 if let Ok(slot) = mqtt_publish_tx.lock() {
                     if let Some(sender) = slot.as_ref() {
                         let _ = sender.send((topic, payload));
                     }
                 }
-                let _ = app_for_midi.emit(
-                    "bridge://log",
-                    BridgeLogEntry {
-                        direction: "midi→mqtt".to_string(),
-                        detail,
-                    },
-                );
+                if let Some(detail) = detail {
+                    let _ = app_for_midi.emit(
+                        "bridge://log",
+                        BridgeLogEntry {
+                            direction: "midi→mqtt".to_string(),
+                            detail,
+                        },
+                    );
+                }
             }
         }
     });
@@ -657,16 +665,23 @@ fn handle_mqtt_publish(
         .map_err(|e| e.to_string())?
         .clone()
         .ok_or_else(|| "MIDI is not listening".to_string())?;
+    let detail = if should_log_traffic(topic) {
+        Some(format_mqtt_to_midi_detail(topic, payload, &bytes))
+    } else {
+        None
+    };
     sender
         .send(bytes)
         .map_err(|_| "MIDI output thread stopped".to_string())?;
-    let _ = app.emit(
-        "bridge://log",
-        BridgeLogEntry {
-            direction: "mqtt→midi".to_string(),
-            detail: topic.to_string(),
-        },
-    );
+    if let Some(detail) = detail {
+        let _ = app.emit(
+            "bridge://log",
+            BridgeLogEntry {
+                direction: "mqtt→midi".to_string(),
+                detail,
+            },
+        );
+    }
     Ok(())
 }
 

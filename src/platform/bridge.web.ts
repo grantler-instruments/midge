@@ -1,5 +1,12 @@
 import mqtt, { type MqttClient } from "mqtt";
-import { inSubscriptionTopics, midiBytesFromMqtt, mqttPayloadFromMidi } from "../mqttMidi";
+import {
+  formatMidiToMqttDetail,
+  formatMqttToMidiDetail,
+  inSubscriptionTopics,
+  midiBytesFromMqtt,
+  mqttPayloadFromMidi,
+  shouldLogTraffic,
+} from "../mqttMidi";
 import type { BridgeConfig, BridgeLogEntry, BridgeStatus, PortLists } from "../types/bridge";
 
 type LogListener = (entry: BridgeLogEntry) => void;
@@ -87,7 +94,9 @@ function handleIncomingMidi(message: Uint8Array) {
       emitLog("error", `MQTT publish failed: ${err.message}`);
       return;
     }
-    emitLog("midi→mqtt", `${mapped.topic} (${mapped.payload.length} bytes)`);
+    if (shouldLogTraffic(mapped.topic)) {
+      emitLog("midi→mqtt", formatMidiToMqttDetail(message, mapped.topic, mapped.payload));
+    }
   });
 }
 
@@ -102,7 +111,9 @@ function handleIncomingMqtt(topic: string, payload: Uint8Array) {
   }
   try {
     midiOutput.send(bytes);
-    emitLog("mqtt→midi", topic);
+    if (shouldLogTraffic(topic)) {
+      emitLog("mqtt→midi", formatMqttToMidiDetail(topic, payload, bytes));
+    }
   } catch (err) {
     emitLog("error", `MIDI output failed: ${err instanceof Error ? err.message : String(err)}`);
   }
