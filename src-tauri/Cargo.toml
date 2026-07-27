@@ -1,6 +1,6 @@
 [package]
 name = "midge"
-version = "0.0.1"
+version = "0.0.2"
 description = "Midge — MIDI and MQTT bridge"
 authors = ["Grantler Instruments"]
 edition = "2021"
