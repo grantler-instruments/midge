@@ -29,7 +29,7 @@ export function SupportDialog() {
         <Stack spacing={2}>
           <Typography color="text.secondary">
             The best way to help is to run the desktop bridge and report issues when something
-            breaks — that feedback shapes what gets fixed next.
+            breaks. That feedback shapes what gets fixed next.
           </Typography>
           <Typography color="text.secondary">
             If you want to support development directly, you can buy me a coffee.

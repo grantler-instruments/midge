@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:pages": "cross-env VITE_BASE=/midge/ npm run build --prefix website && node scripts/assemble-pages.mjs",
+    "build:pages": "cross-env VITE_BASE=/midge/ npm run build --prefix website && cross-env VITE_BASE=/midge/app/ npm run build && node scripts/assemble-pages.mjs",
     "preview": "vite preview",
     "preview:pages": "vite preview --outDir site --base /midge/",
     "website:dev": "npm run dev --prefix website",

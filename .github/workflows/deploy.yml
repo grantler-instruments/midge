@@ -48,7 +48,8 @@ jobs:
         working-directory: website
 
       # Project Pages URL: grantler-instruments.github.io/midge/
-      - name: Build marketing site for GitHub Pages
+      # Marketing at /midge/, web app at /midge/app/.
+      - name: Build marketing site + app for GitHub Pages
         run: npm run build:pages
 
       - uses: actions/upload-pages-artifact@v3

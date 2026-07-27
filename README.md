@@ -30,8 +30,11 @@ A landing page lives in [`website/`](./website) and is deployed to GitHub Pages 
 
 ```bash
 npm run website:dev     # http://localhost:5175/midge/
-npm run build:pages     # builds website/ into site/ for GitHub Pages
+npm run build:pages     # marketing → site/, web app → site/app/
 ```
+
+The deployed site serves the marketing page at `/midge/` and the browser build of the app at
+`/midge/app/`.
 
 Pushes to `main` deploy automatically via `.github/workflows/deploy.yml` (gated on CI).
 Enable it once under **Settings → Pages → Source: GitHub Actions**.

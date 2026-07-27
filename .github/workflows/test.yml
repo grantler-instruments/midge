@@ -77,5 +77,5 @@ jobs:
         run: npm ci
         working-directory: website
 
-      - name: Build Pages site (marketing)
+      - name: Build Pages site (marketing + app)
         run: npm run build:pages

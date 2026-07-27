@@ -1,5 +1,6 @@
 import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import GitHubIcon from "@mui/icons-material/GitHub";
+import OpenInBrowserOutlinedIcon from "@mui/icons-material/OpenInBrowserOutlined";
 import {
   Box,
   Button,
@@ -16,6 +17,7 @@ import { DesktopFrame } from "../components/DeviceFrames";
 import { GITHUB_RELEASES_URL, GITHUB_REPO_URL, MQTT_MIDI_URL } from "../links";
 
 const base = import.meta.env.BASE_URL;
+const webAppUrl = `${base}app/`;
 
 const features = [
   {
@@ -38,14 +40,14 @@ const features = [
   },
   {
     title: "Free & open source",
-    body: "AGPL-3.0. Download builds for macOS, Windows, and Linux — no account, no cloud.",
+    body: "AGPL-3.0. Run it in the browser or download builds for macOS, Windows, and Linux. No account, no cloud.",
   },
 ] as const;
 
 const showFlow = [
   {
     title: "Play in your DAW",
-    body: "Perform in Ableton, Logic, or any DAW — or play a hardware instrument. The MIDI streams straight into Midge over a normal MIDI port.",
+    body: "Perform in Ableton, Logic, or any DAW, or play a hardware instrument. The MIDI streams straight into Midge over a normal MIDI port.",
   },
   {
     title: "Midge publishes to MQTT",
@@ -53,7 +55,7 @@ const showFlow = [
   },
   {
     title: "Reaches every client",
-    body: "The broker fans your MIDI out to all subscribed clients at once — a browser on stage, a phone in the crowd, or someone across the planet. Worldwide if you wish.",
+    body: "The broker fans your MIDI out to all subscribed clients at once: a browser on stage, a phone in the crowd, or someone across the planet. Worldwide if you wish.",
   },
 ] as const;
 
@@ -258,11 +260,11 @@ function ExampleFlow() {
       <FlowRow cards={[...active.cards]} />
 
       <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
-        Every subscribed client receives that message instantly —{" "}
+        Every subscribed client receives that message instantly.{" "}
         <Box component="code" sx={codeSx}>
           remote
         </Box>{" "}
-        is the topic prefix you choose.
+        is just the topic prefix you choose.
       </Typography>
     </Box>
   );
@@ -320,8 +322,8 @@ export function HomePage() {
                 color="text.secondary"
                 sx={{ fontWeight: 400, maxWidth: 520, lineHeight: 1.45 }}
               >
-                A free desktop MQTT↔MIDI bridge. Drive your DAW and hardware from web apps over
-                MQTT, and stream MIDI events back out.
+                A free MQTT↔MIDI bridge for desktop and browser. Drive your DAW and hardware from
+                web apps over MQTT, and stream MIDI events back out.
               </Typography>
 
               <Typography color="text.secondary" sx={{ maxWidth: 520, lineHeight: 1.5 }}>
@@ -338,9 +340,22 @@ export function HomePage() {
                 , so your web apps just work.
               </Typography>
 
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ pt: 1 }}>
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={2}
+                sx={{ pt: 1, flexWrap: "wrap", gap: { sm: 1.5 } }}
+              >
                 <Button
                   variant="contained"
+                  size="large"
+                  href={webAppUrl}
+                  startIcon={<OpenInBrowserOutlinedIcon />}
+                  sx={{ py: 1.5, px: 3, fontSize: "1.05rem" }}
+                >
+                  Try in browser
+                </Button>
+                <Button
+                  variant="outlined"
                   size="large"
                   href={GITHUB_RELEASES_URL}
                   target="_blank"
@@ -351,20 +366,21 @@ export function HomePage() {
                   Download for desktop
                 </Button>
                 <Button
-                  variant="outlined"
+                  variant="text"
                   size="large"
                   href={GITHUB_REPO_URL}
                   target="_blank"
                   rel="noreferrer"
                   startIcon={<GitHubIcon />}
-                  sx={{ py: 1.5, px: 3, fontSize: "1.05rem" }}
+                  sx={{ py: 1.5, px: 2, fontSize: "1.05rem" }}
                 >
                   View on GitHub
                 </Button>
               </Stack>
 
               <Typography color="text.secondary" sx={{ maxWidth: 520, lineHeight: 1.5 }}>
-                Builds for macOS, Windows, and Linux.
+                Run it instantly in your browser, or download desktop builds for macOS, Windows, and
+                Linux.
               </Typography>
             </Stack>
 
@@ -393,9 +409,9 @@ export function HomePage() {
             From your DAW to the whole world
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 5, maxWidth: 620 }}>
-            Play MIDI in your DAW and Midge relays it, over MQTT, to every subscribed client at once
-            — anywhere on the internet. It works the other way too: web apps can send MIDI back into
-            Midge and out to your instruments.
+            Play MIDI in your DAW and Midge relays it, over MQTT, to every subscribed client at
+            once, anywhere on the internet. It works the other way too: web apps can send MIDI back
+            into Midge and out to your instruments.
           </Typography>
 
           <Stack
