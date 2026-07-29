@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 use tokio::task::JoinHandle as TokioJoinHandle;
+use url::Url;
 use uuid::Uuid;
 
 use crate::devices::{find_input_port_index, find_output_port_index, PortLists};
@@ -54,13 +55,21 @@ pub struct BridgeLogEntry {
 
 struct ResolvedMqttConfig {
     url: String,
-    host: String,
+    address: String,
     port: u16,
-    use_tls: bool,
+    transport: MqttTransport,
     prefix: String,
     username: Option<String>,
     password: Option<String>,
     client_id: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MqttTransport {
+    Tcp,
+    Tls,
+    Ws,
+    Wss,
 }
 
 struct ResolvedMidiConfig {
@@ -147,12 +156,21 @@ pub async fn connect_mqtt(
 
     let mut mqtt_options = MqttOptions::new(
         resolved.client_id.clone(),
-        resolved.host.clone(),
+        resolved.address.clone(),
         resolved.port,
     );
     mqtt_options.set_keep_alive(std::time::Duration::from_secs(30));
-    if resolved.use_tls {
-        mqtt_options.set_transport(Transport::tls_with_default_config());
+    match resolved.transport {
+        MqttTransport::Tcp => {}
+        MqttTransport::Tls => {
+            mqtt_options.set_transport(Transport::tls_with_default_config());
+        }
+        MqttTransport::Ws => {
+            mqtt_options.set_transport(Transport::ws());
+        }
+        MqttTransport::Wss => {
+            mqtt_options.set_transport(Transport::wss_with_default_config());
+        }
     }
     if let Some(username) = resolved.username.clone().filter(|value| !value.is_empty()) {
         mqtt_options.set_credentials(username, resolved.password.clone().unwrap_or_default());
@@ -381,7 +399,7 @@ fn resolve_mqtt_config(config: BridgeConfig) -> Result<ResolvedMqttConfig, Strin
     if config.prefix.contains('+') || config.prefix.contains('#') {
         return Err("prefix must not contain MQTT wildcards".to_string());
     }
-    let (host, port, use_tls) = parse_mqtt_url(&config.url)?;
+    let (address, port, transport) = parse_mqtt_url(&config.url)?;
     let client_id = config
         .client_id
         .filter(|value| !value.is_empty())
@@ -389,9 +407,9 @@ fn resolve_mqtt_config(config: BridgeConfig) -> Result<ResolvedMqttConfig, Strin
 
     Ok(ResolvedMqttConfig {
         url: config.url,
-        host,
+        address,
         port,
-        use_tls,
+        transport,
         prefix: config.prefix,
         username: config.username,
         password: config.password,
@@ -436,30 +454,49 @@ fn resolve_midi_config(config: BridgeConfig) -> Result<ResolvedMidiConfig, Strin
     })
 }
 
-fn parse_mqtt_url(url: &str) -> Result<(String, u16, bool), String> {
-    let (rest, use_tls) = if let Some(rest) = url.strip_prefix("mqtts://") {
-        (rest, true)
-    } else if let Some(rest) = url.strip_prefix("mqtt://") {
-        (rest, false)
-    } else {
-        return Err("url must start with mqtt:// or mqtts://".to_string());
-    };
-
-    if rest.is_empty() {
+fn parse_mqtt_url(url: &str) -> Result<(String, u16, MqttTransport), String> {
+    let parsed = Url::parse(url.trim()).map_err(|err| format!("invalid MQTT URL: {err}"))?;
+    if parsed.host_str().is_none() {
         return Err("url must include a host".to_string());
     }
-
-    if let Some((host, port_text)) = rest.rsplit_once(':') {
-        if host.is_empty() {
-            return Err("url host must not be empty".to_string());
-        }
-        let port: u16 = port_text
-            .parse()
-            .map_err(|_| format!("invalid MQTT port: {port_text}"))?;
-        Ok((host.to_string(), port, use_tls))
-    } else {
-        Ok((rest.to_string(), if use_tls { 8883 } else { 1883 }, use_tls))
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("put MQTT credentials in the username and password fields".to_string());
     }
+    if parsed.fragment().is_some() {
+        return Err("url must not include a fragment".to_string());
+    }
+
+    let (transport, default_port, is_websocket) = match parsed.scheme() {
+        "mqtt" => (MqttTransport::Tcp, 1883, false),
+        "mqtts" => (MqttTransport::Tls, 8883, false),
+        "ws" => (MqttTransport::Ws, 80, true),
+        "wss" => (MqttTransport::Wss, 443, true),
+        _ => {
+            return Err("url must start with mqtt://, mqtts://, ws://, or wss://".to_string());
+        }
+    };
+
+    if !is_websocket {
+        if parsed.path() != "/" && !parsed.path().is_empty() {
+            return Err("mqtt:// and mqtts:// URLs must not include a path".to_string());
+        }
+        if parsed.query().is_some() {
+            return Err("mqtt:// and mqtts:// URLs must not include a query".to_string());
+        }
+    }
+
+    let port = parsed.port().unwrap_or(default_port);
+    let address = if is_websocket {
+        parsed.to_string()
+    } else {
+        parsed
+            .host_str()
+            .expect("URL host was validated above")
+            .trim_matches(['[', ']'])
+            .to_string()
+    };
+
+    Ok((address, port, transport))
 }
 
 fn open_midi_output(config: &ResolvedMidiConfig) -> Result<MidiOutputConnection, String> {
@@ -720,4 +757,59 @@ fn mqtt_to_midi_bytes(parsed: &ParsedTopic, payload: &[u8]) -> Result<Vec<u8>, S
         ParsedTopic::System { kind, .. } => ParsedMidiMessage::System(*kind),
     };
     Ok(to_midi_bytes(&message))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_mqtt_url, MqttTransport};
+
+    #[test]
+    fn parses_tcp_and_tls_mqtt_urls() {
+        assert_eq!(
+            parse_mqtt_url("mqtt://broker.example").unwrap(),
+            ("broker.example".to_string(), 1883, MqttTransport::Tcp)
+        );
+        assert_eq!(
+            parse_mqtt_url("mqtts://[::1]:8884/").unwrap(),
+            ("::1".to_string(), 8884, MqttTransport::Tls)
+        );
+    }
+
+    #[test]
+    fn preserves_websocket_url_paths_and_queries() {
+        assert_eq!(
+            parse_mqtt_url("ws://broker.example/mqtt").unwrap(),
+            (
+                "ws://broker.example/mqtt".to_string(),
+                80,
+                MqttTransport::Ws
+            )
+        );
+        assert_eq!(
+            parse_mqtt_url("wss://[::1]:9443/mqtt?tenant=midge").unwrap(),
+            (
+                "wss://[::1]:9443/mqtt?tenant=midge".to_string(),
+                9443,
+                MqttTransport::Wss
+            )
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_or_unsupported_mqtt_urls() {
+        for url in [
+            "http://broker.example",
+            "mqtt://",
+            "mqtt://broker.example/mqtt",
+            "mqtts://broker.example?tenant=midge",
+            "ws://broker.example/#fragment",
+            "mqtt://user:password@broker.example",
+            "wss://broker.example:invalid",
+        ] {
+            assert!(
+                parse_mqtt_url(url).is_err(),
+                "expected {url} to be rejected"
+            );
+        }
+    }
 }

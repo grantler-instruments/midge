@@ -8,6 +8,7 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
 import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import InputLabel from "@mui/material/InputLabel";
 import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
@@ -23,6 +24,14 @@ import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 import { version } from "../package.json";
 import { useBridgeRuntime, useMidiPortNames } from "./hooks/useBridgeRuntime";
+import {
+  buildMqttUrl,
+  defaultPortForProtocol,
+  MQTT_PROTOCOLS,
+  type MqttProtocol,
+  supportsPath,
+  validateMqttEndpoint,
+} from "./mqttEndpoint";
 import { getPlatform } from "./platform";
 import { connectMqtt, disconnectMqtt, startMidi, stopMidi } from "./platform/bridge";
 import { useAppStore } from "./stores/app";
@@ -79,7 +88,10 @@ function App() {
   const { inputs, outputs } = useMidiPortNames();
   const isBrowserDemo = getPlatform() === "web";
 
-  const url = useAppStore((s) => s.url);
+  const protocol = useAppStore((s) => s.protocol);
+  const host = useAppStore((s) => s.host);
+  const port = useAppStore((s) => s.port);
+  const path = useAppStore((s) => s.path);
   const prefix = useAppStore((s) => s.prefix);
   const virtualPort = useAppStore((s) => s.virtualPort);
   const midiIn = useAppStore((s) => s.midiIn);
@@ -91,7 +103,10 @@ function App() {
   const mqttConnected = useAppStore((s) => s.mqttConnected);
   const midiListening = useAppStore((s) => s.midiListening);
   const logEntries = useAppStore((s) => s.logEntries);
-  const setUrl = useAppStore((s) => s.setUrl);
+  const setProtocol = useAppStore((s) => s.setProtocol);
+  const setHost = useAppStore((s) => s.setHost);
+  const setPort = useAppStore((s) => s.setPort);
+  const setPath = useAppStore((s) => s.setPath);
   const setPrefix = useAppStore((s) => s.setPrefix);
   const setVirtualPort = useAppStore((s) => s.setVirtualPort);
   const setMidiIn = useAppStore((s) => s.setMidiIn);
@@ -109,6 +124,7 @@ function App() {
   const [isChangingMidiState, setIsChangingMidiState] = useState(false);
   const [mqttExpanded, setMqttExpanded] = useState(true);
   const [midiExpanded, setMidiExpanded] = useState(true);
+  const [mqttAdvanced, setMqttAdvanced] = useState(false);
 
   useEffect(() => {
     if (isBrowserDemo && !useNamedPorts) {
@@ -117,6 +133,8 @@ function App() {
   }, [isBrowserDemo, setUseNamedPorts, useNamedPorts]);
 
   const namedPorts = isBrowserDemo || useNamedPorts;
+  const mqttEndpoint = { protocol, host, port, path };
+  const url = buildMqttUrl(mqttEndpoint);
   const mqttSummary = [url, prefix].filter(Boolean).join(" · ");
   const midiSummary = namedPorts
     ? [midiIn && `In: ${midiIn}`, midiOut && `Out: ${midiOut}`].filter(Boolean).join(" · ")
@@ -144,6 +162,10 @@ function App() {
   const handleConnectMqtt = async () => {
     setIsChangingMqttState(true);
     try {
+      const endpointError = validateMqttEndpoint(mqttEndpoint);
+      if (endpointError) {
+        throw new Error(endpointError);
+      }
       await connectMqtt(bridgeConfig);
       setMqttConnected(true);
     } catch (err) {
@@ -268,26 +290,104 @@ function App() {
             </AccordionSummary>
             <AccordionDetails>
               <Stack spacing={2}>
-                <TextField
-                  label="Broker URL"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  fullWidth
-                  disabled={mqttConnected}
-                  placeholder={isBrowserDemo ? "ws://127.0.0.1:9001" : "mqtt://127.0.0.1:1883"}
-                  helperText={
-                    isBrowserDemo
-                      ? "Browsers need MQTT over WebSockets (ws:// or wss://). mqtt:// is rewritten to ws:// with the same host/port."
-                      : undefined
-                  }
-                  slotProps={{
-                    htmlInput: {
-                      autoCapitalize: "off",
-                      autoCorrect: "off",
-                      spellCheck: false,
-                    },
-                  }}
-                />
+                {supportsPath(protocol) && (
+                  <FormControlLabel
+                    label="Advanced"
+                    sx={{ alignSelf: "flex-start", m: 0 }}
+                    control={
+                      <Switch
+                        size="small"
+                        checked={mqttAdvanced}
+                        disabled={mqttConnected}
+                        onChange={(_, checked) => setMqttAdvanced(checked)}
+                      />
+                    }
+                  />
+                )}
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <FormControl
+                    disabled={mqttConnected}
+                    sx={{ width: { xs: "100%", sm: 120 }, flexShrink: 0 }}
+                  >
+                    <InputLabel id="mqtt-protocol-label">Protocol</InputLabel>
+                    <Select
+                      labelId="mqtt-protocol-label"
+                      label="Protocol"
+                      value={protocol}
+                      onChange={(event) => {
+                        const nextProtocol = event.target.value as MqttProtocol;
+                        setProtocol(nextProtocol);
+                        setPort(defaultPortForProtocol(nextProtocol));
+                        if (!supportsPath(nextProtocol)) {
+                          setPath("");
+                        }
+                      }}
+                    >
+                      {MQTT_PROTOCOLS.map((option) => (
+                        <MenuItem key={option} value={option}>
+                          {option}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    label="Host"
+                    value={host}
+                    onChange={(e) => setHost(e.target.value)}
+                    fullWidth
+                    disabled={mqttConnected}
+                    placeholder="127.0.0.1"
+                    slotProps={{
+                      htmlInput: {
+                        autoCapitalize: "off",
+                        autoCorrect: "off",
+                        spellCheck: false,
+                      },
+                    }}
+                  />
+                  <TextField
+                    label="Port"
+                    type="number"
+                    value={port}
+                    onChange={(e) => {
+                      if (/^\d*$/.test(e.target.value)) {
+                        setPort(e.target.value);
+                      }
+                    }}
+                    disabled={mqttConnected}
+                    sx={{ width: { xs: "100%", sm: 120 }, flexShrink: 0 }}
+                    error={
+                      port !== "" &&
+                      validateMqttEndpoint({ ...mqttEndpoint, host: "host" }) !== null
+                    }
+                    helperText="1–65535"
+                    slotProps={{
+                      htmlInput: {
+                        inputMode: "numeric",
+                        min: 1,
+                        max: 65_535,
+                        step: 1,
+                      },
+                    }}
+                  />
+                  {supportsPath(protocol) && mqttAdvanced && (
+                    <TextField
+                      label="WebSocket path"
+                      value={path}
+                      onChange={(e) => setPath(e.target.value)}
+                      fullWidth
+                      disabled={mqttConnected}
+                      placeholder="/mqtt"
+                      slotProps={{
+                        htmlInput: {
+                          autoCapitalize: "off",
+                          autoCorrect: "off",
+                          spellCheck: false,
+                        },
+                      }}
+                    />
+                  )}
+                </Stack>
                 <TextField
                   label="Topic prefix"
                   value={prefix}

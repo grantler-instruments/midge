@@ -6,11 +6,14 @@ vi.mock("zustand/middleware", () => ({
 }));
 
 import { DEFAULT_VIRTUAL_PORT_NAME } from "../types/bridge";
-import { useAppStore } from "./app";
+import { migrateAppState, useAppStore } from "./app";
 
 const initialState = {
   darkMode: true,
-  url: "mqtt://127.0.0.1:1883",
+  protocol: "mqtt" as const,
+  host: "127.0.0.1",
+  port: "1883",
+  path: "",
   prefix: "remote",
   virtualPort: DEFAULT_VIRTUAL_PORT_NAME,
   midiIn: "",
@@ -33,17 +36,41 @@ describe("app store", () => {
     const store = useAppStore.getState();
 
     store.setDarkMode(false);
-    store.setUrl("mqtt://broker.example:1883");
+    store.setProtocol("wss");
+    store.setHost("broker.example");
+    store.setPort("9443");
+    store.setPath("/mqtt");
     store.setVirtualPort("Midge MIDI");
     store.setMqttConnected(true);
     store.setMidiListening(true);
 
     expect(useAppStore.getState()).toMatchObject({
       darkMode: false,
-      url: "mqtt://broker.example:1883",
+      protocol: "wss",
+      host: "broker.example",
+      port: "9443",
+      path: "/mqtt",
       virtualPort: "Midge MIDI",
       mqttConnected: true,
       midiListening: true,
+    });
+  });
+
+  it("migrates legacy broker URLs into endpoint fields", () => {
+    expect(
+      migrateAppState(
+        {
+          url: "wss://broker.example:9443/mqtt?tenant=midge",
+          virtualPort: "mqtt-midi-bridge",
+        },
+        0,
+      ),
+    ).toMatchObject({
+      protocol: "wss",
+      host: "broker.example",
+      port: "9443",
+      path: "/mqtt?tenant=midge",
+      virtualPort: DEFAULT_VIRTUAL_PORT_NAME,
     });
   });
 

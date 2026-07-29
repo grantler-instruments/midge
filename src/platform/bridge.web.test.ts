@@ -149,13 +149,19 @@ describe("web bridge", () => {
       url: "mqtt://127.0.0.1:9001",
       prefix: "remote",
       clientId: "demo-client",
+      username: "midge",
+      password: "secret",
     });
     fake.emit("connect");
     await connectPromise;
 
     expect(connectMock).toHaveBeenCalledWith(
       "ws://127.0.0.1:9001",
-      expect.objectContaining({ clientId: "demo-client" }),
+      expect.objectContaining({
+        clientId: "demo-client",
+        username: "midge",
+        password: "secret",
+      }),
     );
     await expect(getBridgeStatus()).resolves.toMatchObject({
       mqttConnected: true,

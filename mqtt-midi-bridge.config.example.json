@@ -1,5 +1,5 @@
 {
-  "url": "mqtt://localhost:1883",
+  "url": "ws://localhost:9001/mqtt",
   "prefix": "remote",
   "virtual": "mqtt-midi-bridge",
   "mqttOptions": {

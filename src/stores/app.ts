@@ -1,11 +1,15 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
+import { type MqttProtocol, parseMqttEndpoint } from "../mqttEndpoint";
 import type { BridgeLogEntry } from "../types/bridge";
 import { DEFAULT_VIRTUAL_PORT_NAME } from "../types/bridge";
 
 interface AppState {
   darkMode: boolean;
-  url: string;
+  protocol: MqttProtocol;
+  host: string;
+  port: string;
+  path: string;
   prefix: string;
   virtualPort: string;
   midiIn: string;
@@ -18,7 +22,10 @@ interface AppState {
   midiListening: boolean;
   logEntries: Array<BridgeLogEntry & { id: number; timestamp: number }>;
   setDarkMode: (darkMode: boolean) => void;
-  setUrl: (url: string) => void;
+  setProtocol: (protocol: MqttProtocol) => void;
+  setHost: (host: string) => void;
+  setPort: (port: string) => void;
+  setPath: (path: string) => void;
   setPrefix: (prefix: string) => void;
   setVirtualPort: (virtualPort: string) => void;
   setMidiIn: (midiIn: string) => void;
@@ -36,12 +43,30 @@ interface AppState {
 const MAX_LOG_ENTRIES = 100;
 let nextLogEntryId = 0;
 
+export function migrateAppState(persisted: unknown, version: number) {
+  const state = persisted as AppState & { url?: string };
+  if (version < 1 && state.virtualPort === "mqtt-midi-bridge") {
+    state.virtualPort = DEFAULT_VIRTUAL_PORT_NAME;
+  }
+  if (version < 2 && state.url) {
+    const endpoint = parseMqttEndpoint(state.url);
+    if (endpoint) {
+      Object.assign(state, endpoint);
+    }
+    delete state.url;
+  }
+  return state;
+}
+
 export const useAppStore = create<AppState>()(
   devtools(
     persist(
       (set) => ({
         darkMode: true,
-        url: "mqtt://127.0.0.1:1883",
+        protocol: "mqtt",
+        host: "127.0.0.1",
+        port: "1883",
+        path: "",
         prefix: "remote",
         virtualPort: DEFAULT_VIRTUAL_PORT_NAME,
         midiIn: "",
@@ -54,7 +79,10 @@ export const useAppStore = create<AppState>()(
         midiListening: false,
         logEntries: [],
         setDarkMode: (darkMode) => set({ darkMode }),
-        setUrl: (url) => set({ url }),
+        setProtocol: (protocol) => set({ protocol }),
+        setHost: (host) => set({ host }),
+        setPort: (port) => set({ port }),
+        setPath: (path) => set({ path }),
         setPrefix: (prefix) => set({ prefix }),
         setVirtualPort: (virtualPort) => set({ virtualPort }),
         setMidiIn: (midiIn) => set({ midiIn }),
@@ -76,17 +104,14 @@ export const useAppStore = create<AppState>()(
       }),
       {
         name: "midge-app",
-        version: 1,
-        migrate: (persisted, version) => {
-          const state = persisted as AppState;
-          if (version < 1 && state.virtualPort === "mqtt-midi-bridge") {
-            state.virtualPort = DEFAULT_VIRTUAL_PORT_NAME;
-          }
-          return state;
-        },
+        version: 2,
+        migrate: migrateAppState,
         partialize: (s) => ({
           darkMode: s.darkMode,
-          url: s.url,
+          protocol: s.protocol,
+          host: s.host,
+          port: s.port,
+          path: s.path,
           prefix: s.prefix,
           virtualPort: s.virtualPort,
           midiIn: s.midiIn,

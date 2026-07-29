@@ -45,7 +45,7 @@ Matches [mqtt-midi-bridge.config.example.json](./mqtt-midi-bridge.config.example
 
 | Field | Description |
 |-------|-------------|
-| `url` | MQTT broker URL (`mqtt://host:1883` or `mqtts://…`) |
+| `url` | MQTT broker endpoint, composed by the app from protocol, host, port, and optional WebSocket path |
 | `prefix` | Topic prefix (e.g. `remote`) |
 | `virtual` | Virtual port name (default `mqtt-midi-bridge` on macOS/Linux) |
 | `midiIn` / `midiOut` | Named ports (Windows / hardware — set both) |
@@ -54,6 +54,14 @@ Matches [mqtt-midi-bridge.config.example.json](./mqtt-midi-bridge.config.example
 On **macOS** and **Linux**, omitting `midiIn`, `midiOut`, and `virtual` creates a virtual port named **`mqtt-midi-bridge`**.
 
 On **Windows**, set `midiIn` and `midiOut` to existing ports (e.g. loopMIDI).
+
+Desktop builds support both raw MQTT and MQTT-over-WebSocket broker endpoints. WebSocket
+brokers commonly use a separate port and path, such as `ws://localhost:9001/mqtt`.
+
+The connection form provides protocol (`mqtt`, `mqtts`, `ws`, or `wss`), host, and port fields.
+Changing protocol resets the port to its conventional default; you can override it. The optional
+path field is shown for WebSocket protocols and supports endpoints such as `/mqtt`. Username and
+password are entered separately from the endpoint.
 
 ## Topic format
 
