@@ -7,6 +7,26 @@ Desktop MQTT↔MIDI bridge built with Tauri, Vite, and React. Implements the sam
 
 Use the same `prefix` in web apps with `MqttMidi({ prefix: "remote", … })`.
 
+## How it fits together
+
+```mermaid
+flowchart LR
+    browser["Browser app<br/>@grantler-instruments/mqtt-midi"]
+    broker[("MQTT broker<br/>e.g. Mosquitto")]
+    midge["Midge<br/>desktop app"]
+    daw["DAW / MIDI app<br/>or hardware"]
+
+    browser -- "publish {prefix}/in/..." --> broker
+    broker -- "subscribe {prefix}/out/..." --> browser
+    broker <-- "mqtt:// · mqtts:// · ws:// · wss://" --> midge
+    midge <-- "virtual MIDI port<br/>(or loopMIDI / IAC / hardware)" --> daw
+```
+
+1. Run an MQTT broker (e.g. Mosquitto on `mqtt://localhost:1883`, or `ws://localhost:9001/mqtt` for WebSockets).
+2. In Midge, enter the broker endpoint and the same `prefix` your web app uses (e.g. `remote`), then connect.
+3. In your DAW or MIDI app, select the **`mqtt-midi-bridge`** virtual port (macOS/Linux default), or the loopMIDI / IAC / hardware ports you picked.
+4. Your browser app uses `@grantler-instruments/mqtt-midi` to send on `{prefix}/in/...` and listen on `{prefix}/out/...`.
+
 ## Stack
 
 - **Frontend:** React 19, MUI 9, Zustand, Vite
